@@ -741,7 +741,9 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
               children: files.map((file) {
                 final isSelected = selected?.filename == file.filename;
                 final isDownloaded =
-                    localModels.any((m) => m.filename == file.filename);
+                    localModels.any((m) =>
+                        m.filename == file.filename &&
+                        (m.repoId.isEmpty || m.repoId == widget.item.repoId));
                 final q = quantInfo(file.filename);
                 final qCode = _quantCode(file.filename);
                 return MouseRegion(
@@ -835,7 +837,9 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
     final file = _selectedFile!;
     final fit = hardwareFit(file.size, gpu);
     final isFileDownloaded =
-        localModels.any((m) => m.filename == file.filename);
+        localModels.any((m) =>
+            m.filename == file.filename &&
+            (m.repoId.isEmpty || m.repoId == widget.item.repoId));
 
     final (fitColor, _) = switch (fit.level) {
       FitLevel.good => (MemoTheme.green, Icons.check_circle_outline),
@@ -844,21 +848,29 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
     };
 
     Widget button;
-    if (isFileDownloaded) {
+    if (isFileDownloaded && !downloadingNow) {
       final localModel =
-          localModels.firstWhere((m) => m.filename == file.filename);
+          localModels.firstWhere((m) =>
+              m.filename == file.filename &&
+              (m.repoId.isEmpty || m.repoId == widget.item.repoId));
+      final needsProjector = _hasMmprojInRepo && !localModel.isVision;
       button = Expanded(
         child: ElevatedButton.icon(
-          onPressed: !installed
-              ? null
-              : () => showDialog(
-                    context: context,
-                    builder: (_) => ModelConfigDialog(model: localModel),
-                  ),
-          icon: const Icon(Icons.play_arrow_rounded, size: 18),
-          label: Text(!installed
-              ? (L10n.t('install_llama_cpp_first'))
-              : (L10n.t('start_sizeformatted', {'sizeFormatted': file.sizeFormatted}))),
+          onPressed: needsProjector
+              ? _download
+              : !installed
+                  ? null
+                  : () => showDialog(
+                        context: context,
+                        builder: (_) => ModelConfigDialog(model: localModel),
+                      ),
+          icon: Icon(needsProjector ? Icons.download_rounded : Icons.play_arrow_rounded,
+              size: 18),
+          label: Text(needsProjector
+              ? L10n.t('download_missing_projector')
+              : !installed
+                  ? L10n.t('install_llama_cpp_first')
+                  : L10n.t('start_sizeformatted', {'sizeFormatted': file.sizeFormatted})),
           style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14)),
         ),

@@ -421,3 +421,24 @@ func TestIsolatedServerNeverOwnsAnUntrackedPort(t *testing.T) {
 	}
 	resp.Body.Close()
 }
+
+func TestFindMmprojPrefersModelSpecificDirectory(t *testing.T) {
+	dir := t.TempDir()
+	model := filepath.Join(dir, "model.gguf")
+	if err := os.MkdirAll(model+".mmproj", 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "mmproj-unrelated.gguf"), []byte("wrong"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := findMmproj(model); got != "" {
+		t.Fatalf("fell back to unrelated projector: %s", got)
+	}
+	wanted := filepath.Join(model+".mmproj", "mmproj.gguf")
+	if err := os.WriteFile(wanted, []byte("correct"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := findMmproj(model); got != wanted {
+		t.Fatalf("got %s want %s", got, wanted)
+	}
+}

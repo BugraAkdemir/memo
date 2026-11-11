@@ -77,19 +77,19 @@ var tagCapabilities = map[string]string{
 	"tool-calling":     "tools",
 	"tools":            "tools",
 	// Vision / multimodal
-	"image-to-text":              "vision",
-	"visual-question-answering":  "vision",
-	"image-text-to-text":         "vision",
-	"vision":                     "vision",
-	"multimodal":                 "vision",
+	"image-to-text":             "vision",
+	"visual-question-answering": "vision",
+	"image-text-to-text":        "vision",
+	"vision":                    "vision",
+	"multimodal":                "vision",
 	// Code generation
-	"code":             "code",
-	"code-generation":  "code",
-	"coding":           "code",
+	"code":            "code",
+	"code-generation": "code",
+	"coding":          "code",
 	// Embeddings
-	"feature-extraction":   "embedding",
-	"sentence-similarity":  "embedding",
-	"sentence-transformers": "embedding",
+	"feature-extraction":        "embedding",
+	"sentence-similarity":       "embedding",
+	"sentence-transformers":     "embedding",
 	"text-embeddings-inference": "embedding",
 }
 
@@ -129,7 +129,10 @@ type LocalModel struct {
 
 // findMmproj looks for a multimodal projector file next to the model.
 func findMmproj(modelPath string) string {
-	dir := filepath.Dir(modelPath)
+	dir := modelPath + ".mmproj"
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		dir = filepath.Dir(modelPath) // legacy manually installed projectors
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return ""
@@ -172,6 +175,7 @@ type hfLFS struct {
 }
 
 type hfTreeItem struct {
+	Type string `json:"type,omitempty"`
 	Path string `json:"path"`
 	Size int64  `json:"size"`
 	LFS  *hfLFS `json:"lfs,omitempty"`
@@ -187,6 +191,10 @@ type hfModelInfo struct {
 type downloadEntry struct {
 	progress *DownloadProgress
 	cancelFn context.CancelFunc
+	// Worker-owned offsets keep model + projector in one cancellable progress row.
+	progressOffset    int64
+	progressRemaining int64
+	progressPending   bool
 }
 
 type Store struct {
@@ -311,27 +319,14 @@ func authorFromRepoID(id string) string {
 // ─── Get files for a repo ────────────────────────────────────────
 
 func (s *Store) GetModelFiles(repoID string) ([]GGUFFile, error) {
-	u := fmt.Sprintf("https://huggingface.co/api/models/%s/tree/main", repoID)
-
-	resp, err := s.client.Get(u)
+	tree, err := s.modelTree(context.Background(), repoID)
 	if err != nil {
-		return nil, fmt.Errorf("modelstore.GetFiles: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("modelstore.GetFiles: HF API status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var tree []hfTreeItem
-	if err := json.NewDecoder(resp.Body).Decode(&tree); err != nil {
-		return nil, fmt.Errorf("modelstore.GetFiles: decode: %w", err)
+		return nil, err
 	}
 
 	var files []GGUFFile
 	for _, item := range tree {
-		if strings.HasSuffix(strings.ToLower(item.Path), ".gguf") {
+		if item.Type != "directory" && validRepoFile(item.Path) {
 			files = append(files, GGUFFile{
 				Filename: item.Path,
 				Size:     item.Size,
@@ -346,9 +341,13 @@ func (s *Store) GetModelFiles(repoID string) ([]GGUFFile, error) {
 
 // fetchModelMeta calls the HF API to retrieve tags for a repo and returns
 // a populated modelMeta. Non-fatal on error — caller logs and moves on.
-func (s *Store) fetchModelMeta(repoID string) (*modelMeta, error) {
+func (s *Store) fetchModelMeta(ctx context.Context, repoID string) (*modelMeta, error) {
 	u := fmt.Sprintf("https://huggingface.co/api/models/%s", repoID)
-	resp, err := s.client.Get(u)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetchModelMeta: %w", err)
 	}
@@ -413,30 +412,14 @@ func loadModelMeta(ggufPath string) *modelMeta {
 // files are LFS-tracked in practice, but this must not be treated as a hard
 // failure if one ever isn't. Non-fatal on any error, same convention as
 // fetchModelMeta — caller logs and downloads without verification.
-func (s *Store) fetchExpectedSHA256(repoID, filename string) (string, error) {
-	u := fmt.Sprintf("https://huggingface.co/api/models/%s/tree/main", repoID)
-	resp, err := s.client.Get(u)
+func (s *Store) fetchExpectedSHA256(ctx context.Context, repoID, filename string) (string, error) {
+	tree, err := s.modelTree(ctx, repoID)
 	if err != nil {
-		return "", fmt.Errorf("fetchExpectedSHA256: %w", err)
+		return "", err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("fetchExpectedSHA256: HF API status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var tree []hfTreeItem
-	if err := json.NewDecoder(resp.Body).Decode(&tree); err != nil {
-		return "", fmt.Errorf("fetchExpectedSHA256: decode: %w", err)
-	}
-
 	for _, item := range tree {
-		if item.Path == filename {
-			if item.LFS != nil {
-				return item.LFS.OID, nil
-			}
-			return "", nil
+		if item.Path == filename && item.LFS != nil {
+			return item.LFS.OID, nil
 		}
 	}
 	return "", nil
@@ -449,6 +432,9 @@ func (s *Store) fetchExpectedSHA256(repoID, filename string) (string, error) {
 // repo+file pairs — only a duplicate of an already-active download is
 // rejected, so e.g. a chat model and a memory model can download at once.
 func (s *Store) DownloadModel(repoID, filename string, expectedSize int64) error {
+	if !validRepoFile(filename) {
+		return fmt.Errorf("modelstore.Download: invalid model filename")
+	}
 	key := downloadKey(repoID, filename)
 
 	s.mu.Lock()
@@ -475,6 +461,7 @@ func (s *Store) DownloadModel(repoID, filename string, expectedSize int64) error
 
 	go func() {
 		defer logx.Recover("modelstore.Store download: " + repoID + "/" + filename)
+		defer cancel()
 		defer func() {
 			s.mu.Lock()
 			if entry.progress.Error == "" {
@@ -495,7 +482,7 @@ func (s *Store) DownloadModel(repoID, filename string, expectedSize int64) error
 			s.mu.Unlock()
 		}()
 
-		if err := s.doDownload(ctx, entry, repoID, filename, expectedSize); err != nil {
+		if err := s.downloadWithProjector(ctx, entry, repoID, filename, expectedSize); err != nil {
 			errMsg := err.Error()
 			s.mu.Lock()
 			entry.progress.Error = errMsg
@@ -529,7 +516,15 @@ func (s *Store) removeFromOrderLocked(key string) {
 }
 
 func (s *Store) doDownload(ctx context.Context, entry *downloadEntry, repoID, filename string, expectedSize int64) error {
-	escapedFile := url.PathEscape(filename)
+	return s.doDownloadTo(ctx, entry, repoID, filename, expectedSize, filepath.Join(s.modelsDir, filename))
+}
+
+func (s *Store) doDownloadTo(ctx context.Context, entry *downloadEntry, repoID, filename string, expectedSize int64, destPath string) error {
+	segments := strings.Split(filename, "/")
+	for i := range segments {
+		segments[i] = url.PathEscape(segments[i])
+	}
+	escapedFile := strings.Join(segments, "/")
 	downloadURL := fmt.Sprintf("https://huggingface.co/%s/resolve/main/%s", repoID, escapedFile)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
@@ -567,15 +562,14 @@ func (s *Store) doDownload(ctx context.Context, entry *downloadEntry, repoID, fi
 		totalBytes = expectedSize
 	}
 	s.mu.Lock()
-	entry.progress.TotalBytes = totalBytes
+	entry.progress.TotalBytes = entry.progressOffset + totalBytes + entry.progressRemaining
 	s.mu.Unlock()
 
-	// Create destination directory (flat: directly in modelsDir, no subdirectory)
-	if err := os.MkdirAll(s.modelsDir, 0755); err != nil {
+	// Projectors live in a model-specific sibling directory; ordinary models keep their existing path.
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 		return fmt.Errorf("create dir: %w", err)
 	}
 
-	destPath := filepath.Join(s.modelsDir, filename)
 	tmpPath := destPath + ".downloading"
 
 	f, err := os.Create(tmpPath)
@@ -592,7 +586,7 @@ func (s *Store) doDownload(ctx context.Context, entry *downloadEntry, repoID, fi
 	// here (HF API hiccup, or a path HF doesn't LFS-track) just means
 	// integrity verification is skipped below, same as fetchModelMeta's
 	// existing non-fatal convention.
-	expectedSHA256, shaErr := s.fetchExpectedSHA256(repoID, filename)
+	expectedSHA256, shaErr := s.fetchExpectedSHA256(ctx, repoID, filename)
 	if shaErr != nil {
 		logx.Printf("modelstore: could not fetch expected checksum for %s/%s, skipping integrity verification: %v", repoID, filename, shaErr)
 	}
@@ -625,12 +619,15 @@ func (s *Store) doDownload(ctx context.Context, entry *downloadEntry, repoID, fi
 			}
 
 			var percent float64
-			if totalBytes > 0 {
-				percent = float64(downloaded) / float64(totalBytes) * 100
+			if combined := entry.progressOffset + totalBytes + entry.progressRemaining; combined > 0 {
+				percent = float64(entry.progressOffset+downloaded) / float64(combined) * 100
 			}
 
+			if entry.progressPending && percent >= 100 {
+				percent = 99
+			}
 			s.mu.Lock()
-			entry.progress.Downloaded = downloaded
+			entry.progress.Downloaded = entry.progressOffset + downloaded
 			entry.progress.Percent = percent
 			entry.progress.Speed = speed
 			s.mu.Unlock()
@@ -682,12 +679,14 @@ func (s *Store) doDownload(ctx context.Context, entry *downloadEntry, repoID, fi
 	}
 
 	s.mu.Lock()
-	entry.progress.Percent = 100
-	entry.progress.Downloaded = downloaded
+	if !entry.progressPending {
+		entry.progress.Percent = 100
+	}
+	entry.progress.Downloaded = entry.progressOffset + downloaded
 	s.mu.Unlock()
 
 	// Fetch and save HF metadata (tool-calling capability etc.) as a sidecar.
-	if meta, err := s.fetchModelMeta(repoID); err != nil {
+	if meta, err := s.fetchModelMeta(ctx, repoID); err != nil {
 		logx.Printf("modelstore: fetchModelMeta skipped for %s: %v", repoID, err)
 		// Downloads are stored flat (no per-repo subdirectory, see the
 		// destPath comment above), so RepoID has no other source once this
@@ -702,7 +701,7 @@ func (s *Store) doDownload(ctx context.Context, entry *downloadEntry, repoID, fi
 		logx.Printf("modelstore: saveModelMeta failed for %s: %v", destPath, err)
 	}
 
-	return nil
+	return ctx.Err()
 }
 
 // copyFile copies a file from src to dst (cross-device safe).
@@ -814,7 +813,7 @@ func (s *Store) ListLocalModels() []LocalModel {
 			lm.SupportsVision = meta.SupportsVision
 			lm.SupportsCode = meta.SupportsCode
 			lm.Tags = meta.Tags
-			if lm.RepoID == "" && meta.RepoID != "" {
+			if meta.RepoID != "" {
 				lm.RepoID = meta.RepoID
 			}
 		}
@@ -893,6 +892,13 @@ func (s *Store) DeleteLocalModel(path string) error {
 		return fmt.Errorf("modelstore.Delete: %w", err)
 	}
 
+	// Only this model owns the automatically downloaded projector directory.
+	if err := os.RemoveAll(resolved + ".mmproj"); err != nil {
+		return fmt.Errorf("modelstore.Delete: projector: %w", err)
+	}
+	if err := os.Remove(resolved + ".meta.json"); err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	// Clean up empty parent directories
 	dir := filepath.Dir(resolved)
 	for dir != absModelsDir {

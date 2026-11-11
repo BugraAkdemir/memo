@@ -168,6 +168,7 @@ class _TrayControllerState extends ConsumerState<TrayController>
   }
 
   Future<void> _showWindow() async {
+    if (!mounted || _quitting) return;
     await windowManager.show();
     await windowManager.focus();
   }
@@ -198,13 +199,36 @@ class _TrayControllerState extends ConsumerState<TrayController>
           return;
         }
         if (await _tellOnceThatMemoKeepsRunning()) return;
-        if (mounted) await windowManager.hide();
+        if (!mounted || _quitting) return;
+        // Explorer may have restarted while the first-close dialog was open.
+        // The patched Windows plugin returns null if the shell lost the icon.
+        if (Platform.isWindows && !await _windowsTrayPresent()) {
+          if (mounted && !_quitting) await _minimizeWithoutTray();
+          return;
+        }
+        if (mounted && !_quitting) await windowManager.hide();
       } else {
         await _quit();
       }
     } finally {
       _handlingClose = false;
     }
+  }
+
+  Future<bool> _windowsTrayPresent() async {
+    try {
+      return await trayManager.getBounds().timeout(
+            const Duration(seconds: 2),
+          ) !=
+          null;
+    } on PlatformException catch (error, stack) {
+      _logTrayFailure(error, stack);
+    } on MissingPluginException catch (error, stack) {
+      _logTrayFailure(error, stack);
+    } on TimeoutException catch (error, stack) {
+      _logTrayFailure(error, stack);
+    }
+    return false;
   }
 
   Future<void> _minimizeWithoutTray() async {

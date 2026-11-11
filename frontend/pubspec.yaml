@@ -96,7 +96,7 @@ dependencies:
 
   # Desktop window control (minimize-to-tray: intercept the close button
   # instead of quitting) and the system tray icon itself — LM-Studio-style
-  # "still running in the background" behavior, off by default.
+  # "still running in the background" behavior, on by default on desktop.
   window_manager: ^0.4.3
   tray_manager:
     path: third_party/tray_manager

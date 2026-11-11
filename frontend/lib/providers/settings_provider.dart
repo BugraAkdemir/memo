@@ -1135,7 +1135,11 @@ final minimizeToTrayProvider =
 
 /// The minimize-to-tray default before the person has chosen (see
 /// [minimizeToTrayProvider]).
-bool get minimizeToTrayDefault => !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+bool get minimizeToTrayDefault =>
+    !kIsWeb &&
+    (defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.linux ||
+        defaultTargetPlatform == TargetPlatform.macOS);
 
 class MinimizeToTrayNotifier extends StateNotifier<bool> {
   final SharedPreferences _prefs;

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 // Compatibility with the app's supported SDK.
 // ignore: deprecated_member_use
 import 'package:flutter/material.dart';
@@ -28,6 +29,7 @@ void main() {
   final trayCalls = <MethodCall>[];
   var failIcon = false;
   var failMenu = false;
+  var iconLost = false;
   Completer<void>? iconPending;
   late SharedPreferences prefs;
   late _Api api;
@@ -36,6 +38,7 @@ void main() {
     trayCalls.clear();
     api = _Api();
     failIcon = failMenu = false;
+    iconLost = false;
     iconPending = null;
     SharedPreferences.setMockInitialValues({
       'memo_minimize_to_tray': true,
@@ -53,6 +56,11 @@ void main() {
       call,
     ) async {
       trayCalls.add(call);
+      if (call.method == 'getBounds') {
+        return iconLost
+            ? null
+            : {'x': 0.0, 'y': 0.0, 'width': 16.0, 'height': 16.0};
+      }
       if (call.method == 'setIcon') {
         await iconPending?.future;
         if (failIcon) throw PlatformException(code: 'icon_unavailable');
@@ -206,6 +214,40 @@ void main() {
     expect(calls().where((c) => c == 'destroy'), hasLength(1));
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets('first-close hint keeps the window open until acknowledged', (
+    tester,
+  ) async {
+    await prefs.remove('memo_tray_hint_shown');
+    await mount(tester);
+    await close(tester);
+    await tester.pumpAndSettle();
+    expect(find.text(L10n.t('tray_hint_title')), findsOneWidget);
+    expect(calls(), isNot(contains('hide')));
+    await tester.tap(find.text(L10n.t('tray_hint_ok')));
+    await tester.pumpAndSettle();
+    expect(calls(), contains('hide'));
+    expect(api.unregistered, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets(
+    'Windows shell loss during the hint prevents hiding',
+    (tester) async {
+      await prefs.remove('memo_tray_hint_shown');
+      await mount(tester);
+      await close(tester);
+      await tester.pumpAndSettle();
+      iconLost = true;
+      await tester.tap(find.text(L10n.t('tray_hint_ok')));
+      await tester.pumpAndSettle();
+      expect(calls(), contains('minimize'));
+      expect(calls(), isNot(contains('hide')));
+      expect(api.unregistered, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+    },
+    skip: !Platform.isWindows,
+  );
 
   testWidgets('explicit close preference exits even with failed tray', (
     tester,

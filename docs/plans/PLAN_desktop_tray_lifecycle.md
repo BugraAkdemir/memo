@@ -25,3 +25,8 @@ pass. Do not equate a method-channel fixture with Explorer/taskbar acceptance.
 Item 1 local verification: 7 tray widget scenarios + 3 preference tests pass;
 focused analyze reports no issues; UI literal scan has no matches. Full remote
 CI and native Windows verification follow item 2; this is not native acceptance.
+
+Linux/macOS X-to-tray as the universal default is deferred until native host
+availability is validated. Upstream Linux set_icon reports success without
+proving a StatusNotifier host displays it. Keep existing defaults/saved choices
+in this first Windows-focused change; do not create inaccessible hidden apps.

@@ -1,3 +1,11 @@
+# Son oturum — 11 Kasım — mmproj otomatik indirme ve onarım
+- Yalnız mmproj düzeltildi; Windows performansı değişmedi. Otomatik projektör/onarım, model izolasyonu, checksum, pagination/alt klasör ve TR/EN düğme: docs/MMPROJ_WINDOWS_STARTUP_REVIEW.md.
+- Kod af2e1814 + 08d903dc push: codex/mmproj-download; PR/release/main merge yok. Kullanıcı login yeniledi ve gerekli push/CI'ı yetkilendirdi. Son doküman checkpoint'i de push ediliyor.
+- CI43093145396: build/vet + modelstore/llama race PASS; Flutter1019+1 PASS; L10n PASS. Yerel model86+widgetTR/EN2 PASS, lib analiz eski3info. Gerçek HF/Windows ve stres yok.
+- Tam CI KIRMIZI: üç sohbet testi + Go1.26.10 GO-2026-6859. Pre-fix63721d7f karşılaştırma CI43093959788 aynı üç assertion ve güvenlik hatasını doğruladı. Ayrıntılar raporda; bağımsız sorunlar ayrı açık iş. Yeşile dek tekrar yok.
+
+---
+
 # Son oturum — 11 Kasım — mmproj / Windows frontend incelemesi
 - Üretim kodu değişmedi; rapor docs/MMPROJ_WINDOWS_STARTUP_REVIEW.md. mmproj eksikliği yerel HTTP/Go overlay ile üretildi; Windows frontend kök neden ölçümü açık, font/ilk sekme yükü aday.
 - Doğrulama: modelstore race suite PASS (1.019sn), tek overlay repro PASS (1.010sn); GOMAXPROCS=2, -p1, stres yok. Tam Go/Flutter veya Windows koşulmadı; düzeltme iddiası yok.

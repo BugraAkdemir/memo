@@ -6,7 +6,7 @@
 
 **mmproj / Windows frontend — 11 Kasım**
 - mmproj düzeltmesi/onarma push edildi; son oturum + docs/MMPROJ_WINDOWS_STARTUP_REVIEW.md. Gerçek “ofical gemma 4ab” repo kimliği/canlı kabul yok. CI pre-fix'te de düşen3sohbet testi ve Go1.26.10 güvenlik güncellemesi ayrı açık.
-- Windows kullanıcıya göre backend hızlı, frontend yavaş. Tüm sekmeler ilk açılışta kuruluyor; fontlar pakette değil, asenkron disk/ağ yükü var; kesin süre atfı yok. Native/Dart/prefs/ilk raster ölçümü ve sonraki tartışma açık. Başlatıcı motor kopyası+3sn frontend'den önce. Windows performans değişikliği yapma.
+- Windows60/40sn ölçülmedi; bulgular/öneri: docs/DESKTOP_STARTUP_LIFECYCLE_REVIEW.md. Installer motoru kuruyor, launcher tekrar home'a kopyalıyor; eager sekmeler/state koruma, paketlenmemiş asenkron fontlar. Windows X varsayılan tray; backend job yalnız motorları kapsar. Unix set-e/no-trap UI hatasında shutdown atlayabilir. Tek paket+oturum sahipliği önerildi; uygulama değişikliği yok, native kabul ve ölçüm açık.
 
 **Tanıtım filmi / Reels**
 - 4 Python/Rust Reels ve paket: build_output/marketing/python-rust-reels/; son kareler/altyazı/ZIP doğrulandı, kullanıcı geri bildirimi bekleniyor. Plan docs/plans/PLAN_python_rust_reels.md; önceki oturum ayrıntısı arşivde.
@@ -58,8 +58,7 @@
 
 ---
 
-# Son oturum — 11 Kasım — mmproj otomatik indirme ve onarım
-- Yalnız mmproj düzeltildi; Windows performansı değişmedi. Otomatik projektör/onarım, model izolasyonu, checksum, pagination/alt klasör ve TR/EN düğme: docs/MMPROJ_WINDOWS_STARTUP_REVIEW.md.
-- Kod af2e1814 + 08d903dc push: codex/mmproj-download; PR/release/main merge yok. Kullanıcı login yeniledi ve gerekli push/CI'ı yetkilendirdi. Son doküman checkpoint'i de push ediliyor.
-- CI43093145396: build/vet + modelstore/llama race PASS; Flutter1019+1 PASS; L10n PASS. Yerel model86+widgetTR/EN2 PASS, lib analiz eski3info. Gerçek HF/Windows ve stres yok.
-- Tam CI KIRMIZI: üç sohbet testi + Go1.26.10 GO-2026-6859. Pre-fix63721d7f karşılaştırma CI43093959788 aynı üç assertion ve güvenlik hatasını doğruladı. Ayrıntılar raporda; bağımsız sorunlar ayrı açık iş. Yeşile dek tekrar yok.
+# Son oturum — 11 Kasım — masaüstü başlangıç ve süreç sahipliği incelemesi
+- docs/DESKTOP_STARTUP_LIFECYCLE_REVIEW.md: installer/tekrar kopya, sekme/font nedenleri, tray/registry/job/Unix cleanup boşlukları ve üç platform için öneri+kabul senaryoları. Gerçek Windows40–60sn darboğazı kanıtlanmadı; üretim kodu değişmedi.
+- Tek PID yerine tek paket/giriş ve sahipli alt süreçler; paylaşılan CLI/backend, updater ve dış uygulama istisnaları korunmalı. Uygulama adımları yalnız öneri.
+- Sınırlı yerel registry/shutdown race: PASS1.500s; tray varsayılanları Flutter3/3 PASS. Windows/mac native süreç testi yok; önceki tam CI bağımsız kırmızıları sürüyor. Doküman checkpoint commit; PR/tag/release yok.

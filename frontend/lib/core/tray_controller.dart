@@ -56,6 +56,7 @@ class _TrayControllerState extends ConsumerState<TrayController>
     with WindowListener, TrayListener {
   bool _trayReady = false;
   bool _handlingClose = false;
+  bool _quitting = false;
   Future<bool>? _traySetup;
 
   @override
@@ -105,10 +106,10 @@ class _TrayControllerState extends ConsumerState<TrayController>
       await trayManager.setIcon(
         Platform.isWindows ? 'lib/icon/memo.ico' : 'lib/icon/memo.png',
       );
-      if (!mounted) return false;
+      if (!mounted || _quitting) return false;
       // An icon alone is insufficient: people must be able to Open and Quit.
       await _setMenu();
-      if (!mounted) return false;
+      if (!mounted || _quitting) return false;
       _trayReady = true;
       return true;
     } on PlatformException catch (error, stack) {
@@ -172,6 +173,8 @@ class _TrayControllerState extends ConsumerState<TrayController>
   }
 
   Future<void> _quit() async {
+    if (_quitting) return;
+    _quitting = true;
     await _unregisterClient();
     await windowManager.setPreventClose(false);
     await windowManager.destroy();
@@ -179,7 +182,7 @@ class _TrayControllerState extends ConsumerState<TrayController>
 
   @override
   void onWindowClose() async {
-    if (_handlingClose) return;
+    if (_handlingClose || _quitting) return;
     _handlingClose = true;
     try {
       if (ref.read(minimizeToTrayProvider)) {

@@ -6,10 +6,19 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:memo_flutter/core/l10n.dart';
+import 'package:memo_flutter/core/api_client.dart';
+import 'package:memo_flutter/providers/chat_provider.dart';
 import 'package:memo_flutter/core/tray_controller.dart';
 import 'package:memo_flutter/providers/models_provider.dart';
 import 'package:memo_flutter/providers/settings_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class _Api extends MemoApiClient {
+  _Api() : super(baseUrl: 'http://fixture.invalid');
+  final unregistered = <String>[];
+  @override
+  Future<void> unregisterClient(String id) async => unregistered.add(id);
+}
 
 void main() {
   const windowChannel = MethodChannel('window_manager');
@@ -21,9 +30,11 @@ void main() {
   var failMenu = false;
   Completer<void>? iconPending;
   late SharedPreferences prefs;
+  late _Api api;
   setUp(() async {
     windowCalls.clear();
     trayCalls.clear();
+    api = _Api();
     failIcon = failMenu = false;
     iconPending = null;
     SharedPreferences.setMockInitialValues({
@@ -35,6 +46,7 @@ void main() {
       call,
     ) async {
       windowCalls.add(call);
+      if (call.method == 'isMinimized') return false;
       return null;
     });
     binding.defaultBinaryMessenger.setMockMethodCallHandler(trayChannel, (
@@ -64,6 +76,8 @@ void main() {
       ProviderScope(
         overrides: [
           prefsProvider.overrideWithValue(prefs),
+          apiClientProvider.overrideWithValue(api),
+          currentClientIdProvider.overrideWith((ref) => 'desktop-fixture'),
           modelStatusProvider.overrideWith((ref) => const Stream.empty()),
         ],
         child: TrayController(
@@ -96,6 +110,7 @@ void main() {
     await mount(tester);
     await close(tester);
     expect(calls(), contains('hide'));
+    expect(api.unregistered, isEmpty);
     expect(calls(), isNot(contains('destroy')));
     expect(calls(), isNot(contains('minimize')));
     expect(trayCalls.where((c) => c.method == 'setContextMenu'), isNotEmpty);
@@ -162,6 +177,36 @@ void main() {
     expect(calls(), contains('hide'));
     await tester.pumpWidget(const SizedBox());
   });
+  testWidgets('tray Quit unregisters once and destroys, Open restores the UI', (
+    tester,
+  ) async {
+    await mount(tester);
+    await close(tester);
+    final menuCall = trayCalls.lastWhere((c) => c.method == 'setContextMenu');
+    final items = (menuCall.arguments['menu']['items'] as List).cast<Map>();
+    Future<void> click(String label) async {
+      final item = items.firstWhere((i) => i['label'] == label);
+      await binding.defaultBinaryMessenger.handlePlatformMessage(
+        trayChannel.name,
+        const StandardMethodCodec().encodeMethodCall(
+          MethodCall('onTrayMenuItemClick', {'id': item['id']}),
+        ),
+        (_) {},
+      );
+      await tester.pump();
+    }
+
+    windowCalls.clear();
+    await click(L10n.t('tray_open'));
+    expect(calls(), containsAllInOrder(['show', 'focus']));
+    expect(api.unregistered, isEmpty);
+    await click(L10n.t('tray_quit'));
+    await click(L10n.t('tray_quit'));
+    expect(api.unregistered, ['desktop-fixture']);
+    expect(calls().where((c) => c == 'destroy'), hasLength(1));
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('explicit close preference exits even with failed tray', (
     tester,
   ) async {

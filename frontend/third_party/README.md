@@ -92,3 +92,20 @@ The test uses the real Linux plugins and software rendering. GTK/Flutter
 initialization and final main-window teardown may still print compositor or
 `FlutterEngineRemoveView` warnings; a zero exit and the harness markers are
 the result, not an assertion that those upstream warnings disappeared.
+
+## tray_manager (0.2.4, MIT)
+
+Vendored from the pub.dev 0.2.4 archive; LICENSE and upstream CHANGELOG retained.
+Dart/Linux/macOS sources are unchanged. Memo patches in the Windows plugin and
+`notification_icon.h`:
+
+- Zero-initialize shell structures, retain one fixed window/icon identity, check
+  LoadImage and Shell_NotifyIcon results and report failures to Dart.
+- Recover a stale registration with ADD, restore on TaskbarCreated, and reveal
+  the main window if restoration fails. Windows still controls overflow placement.
+- Keep the main engine's tray channel when the mascot engine registers plugins.
+- Own/delete icon/menu resources; return no bounds on shell query failure.
+
+Before upgrading, compare these Windows changes with upstream and run the native
+notification-icon tests plus the application's tray widget tests. Do not replace
+this with an unpatched hosted dependency: Dart cannot detect ignored native errors.

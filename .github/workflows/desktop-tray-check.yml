@@ -1,0 +1,34 @@
+name: Desktop Tray Verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['codex/desktop-tray-lifecycle']
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/desktop-tray-check.yml'
+
+jobs:
+  windows:
+    name: Windows native tray and Flutter build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure native regression tests
+        run: cmake -S frontend/third_party/tray_manager/windows/tests -B build/tray-tests
+      - name: Build native regression tests
+        run: cmake --build build/tray-tests --config Release
+      - name: Test native error handling and Explorer recovery
+        run: ctest --test-dir build/tray-tests -C Release --output-on-failure
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Get dependencies
+        run: flutter pub get
+        working-directory: frontend
+      - name: Test window close behavior
+        run: flutter test --concurrency=1 test/widgets/tray_controller_test.dart test/providers/minimize_to_tray_default_test.dart
+        working-directory: frontend
+      - name: Compile Windows frontend and patched native plugin
+        run: flutter build windows --release
+        working-directory: frontend

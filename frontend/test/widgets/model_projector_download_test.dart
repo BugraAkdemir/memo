@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+// Match the app's supported SDK; newer CI Flutter deprecates this import.
+// ignore: deprecated_member_use
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

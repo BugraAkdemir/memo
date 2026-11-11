@@ -39,7 +39,15 @@ Go vet ./internal/modelstore ./internal/llama: exit 0
 Changed Flutter UI literal check: no matches
 ```
 
-Full Go build/vet/race tests and Flutter analysis/tests run in remote CI; the latest run/result is recorded in `handoff.md`. Native Windows runtime and real HF download acceptance remain unverified. Implementation checkpoint: `af2e1814`, branch `codex/mmproj-download`; no PR or release.
+Remote CI for source commit `08d903dc`: [run 43093145396](https://github.com/BugraAkdemir/memo/actions/runs/43093145396).
+
+- Go build and vet passed. Modelstore race tests passed (1.105s, 76.5% coverage); llama race tests passed (5.735s).
+- Flutter analysis/test job passed: 1019 tests plus 1 backend-override test. Its newer stable SDK reported 236 info findings across the repository (including the newly deprecated material import). The new test retains compatibility with the supported local SDK and explicitly suppresses that import deprecation; production imports were not migrated.
+- L10n and old-domain guards passed.
+- The full Go suite failed `TestIntegration_LongHistoryGetsCompacted` (9 compactions over 30 turns), `TestChat_StreamCutMidAnswerKeepsWhatTheUserSaw` (saved a friendly error rather than partial text), and `TestChat_EmptyReplyIsExplainedNotSavedBlank` (stop event rather than error).
+- Security scan failed GO-2026-6859 in the already-pinned Go 1.26.10 standard library; its log identifies 1.26.11 as fixed. Go module/workflow pins were not changed in the mmproj fix. The unchanged baseline security scan reports the same vulnerability.
+
+The exact pre-fix commit `63721d7f` was compared in [baseline run 43093959788](https://github.com/BugraAkdemir/memo/actions/runs/43093959788). Its Go job failed the same three tests with identical assertions (including 9 compactions over 30 turns, the same stored friendly error, and the same stop event); its security scan reported the same GO-2026-6859. These failures therefore predate the projector fix. The overall CI run is not green; these independent issues were not changed or repeatedly rerun until green. Native Windows runtime and real HF download acceptance remain unverified. Implementation checkpoint: `af2e1814`, branch `codex/mmproj-download`; no PR or release.
 
 ## Windows frontend investigation (unchanged)
 

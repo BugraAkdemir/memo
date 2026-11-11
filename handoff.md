@@ -5,7 +5,7 @@
 ## Açık işler
 
 **mmproj / Windows frontend — 11 Kasım**
-- mmproj düzeltmesi/onarma: son oturum ve docs/MMPROJ_WINDOWS_STARTUP_REVIEW.md. Gerçek “ofical gemma 4ab” HF repo kimliği belirsiz, gerçek indirme/native kabulü yok.
+- mmproj düzeltmesi/onarma push edildi; son oturum + docs/MMPROJ_WINDOWS_STARTUP_REVIEW.md. Gerçek “ofical gemma 4ab” repo kimliği/canlı kabul yok. CI pre-fix'te de düşen3sohbet testi ve Go1.26.10 güvenlik güncellemesi ayrı açık.
 - Windows kullanıcıya göre backend hızlı, frontend yavaş. Tüm sekmeler ilk açılışta kuruluyor; fontlar pakette değil, asenkron disk/ağ yükü var; kesin süre atfı yok. Native/Dart/prefs/ilk raster ölçümü ve sonraki tartışma açık. Başlatıcı motor kopyası+3sn frontend'den önce. Windows performans değişikliği yapma.
 
 **Tanıtım filmi / Reels**
@@ -24,7 +24,7 @@
 
 **Performans / telemetri**
 - Benchmark kullanıcı duraklattı (29 Ekim): docs/PERFORMANCE_BENCHMARK_CHECKPOINT.md + data/performance-benchmark/PAUSED.json. Kayıt aşama1, data aşama2; kalibrasyon/resume/aşama2–3/rapor açık. Runner baştan siler, körlemesine çalıştırma.
-- Telemetri sunucusu /v1/install dahil dağıtıldı/doğrulandı (kullanıcı 9 Kasım teyidi); yeniden açık sunma. 30 sahte demo cihaz silindi. Kullanıcıda Cloudflare belirteci silme, DB/panel parola değişimi ve .env.local temizliği.
+- Telemetri sunucusu /v1/install dahil doğrulandı (9 Kasım teyidi); yeniden açık sunma. Demo30cihaz silindi. Kullanıcıda Cloudflare token silme, DB/panel parola ve .env.local temizliği.
 - Resmî derlemede paylaşım sorusuz açık, kayıtlı hayır korunur; kaynak kapalı, MEMO_TELEMETRY=off her şeyi engeller. Kimliksiz install paylaşım kapalıyken de gider; ilk gün rapor yok. docs/TELEMETRY.md + PLAN_telemetry.md.
 - Eksik: Whisper start/exit, Dart/motor crash, offered/downloaded, needs_newer_app/not_for_this_machine, yerel paketlerin official damgası, site gizlilik. v5.0.0 EN/TR notları 7 Kasım yazıldı, tag tarihinde güncelle; varsayılan açık geçiş açıklanmalı. Canlı tel/native/Windows/macOS/tag damgası/ertesi gün yok; izole fake PASS.
 
@@ -34,11 +34,11 @@
 - Alt ajan web kısa PASS; uzun/native ve gerçek Antigravity/Waydroid kalite/hız, 300dk geçmişi kanıtsız. docs/CHAT_SUBAGENTS.md + PLAN_chat_subagents.md + TASKLOOP_PERFORMANCE_REVIEW.md. Ana inceleme spinner var Durdur yok; kesinti/sonraki sonuç eksik; kesilen inceleme sonraki sonuç tutmaz, Resume main review gerekir, ana ajan resume yok; çocuk kayıt context canceled olabilir.
 
 **Proje / skill / akış / REPL**
-- PLAN_project_folders.md P0–P5 bitti; hafıza Code Mode bağımsız, anahtarlara bağlı. Flutter / yalnız global, proje /ad backend'de; proje izin UI yok, provider_policy ayrılmış. Skill tasarım kapsamı belirsiz.
-- GitHub skill zip/onay, modelin .memo/AGENTS.md/izin uyumu, kullanıcı DB göçü, Windows/macOS Guard denenmedi; migration yedeği yerel, silinmez. Live Mode ev sohbeti normal, diğer ev ajan hafıza almaz. Proje Code Mode kapalıyken takvim/WA açık, kişisel hafıza/kimlik izole.
-- Birleşik liste web ajan/klasör/ilk mesaj PASS; native/öneri/animasyon yok. Eski IndexedStack ajan slotu boş, ProjectPath işaret. Başlık ilk kelimeler; LLM başlığı kullanıcı kararı ister; CLI / değişmedi.
+- PLAN_project_folders.md P0–P5 bitti. Açık: Flutter proje skill / menüsü, proje izin UI, provider_policy, skill tasarım kapsamı.
+- GitHub skill zip/onay, modelin .memo/AGENTS.md/izin uyumu, kullanıcı DB göçü, Windows/macOS Guard denenmedi; migration yedeği yerel, silinmez. Proje hafıza izolasyon kuralları AGENTS.md'de.
+- Birleşik liste web PASS; native/öneri/animasyon yok. LLM sohbet başlığı kullanıcı kararı ister; şimdiki ilk kelimeler.
 - Skill: / imleç/IME/cümle ortası, stop, use_skill canlı yok; adsız ≤3 kelime eşleme, model yok. Dosya/resim tespiti yok; prompt'tan düşen kullanılıyor kalabilir, hata/timeout skill_used kaybolabilir, stop TR. Toggle yok; /skill:on|off|add|remove + REPL /skill.
-- PLAN_agent_streaming.md + PLAN_cli_coding.md: gerçek sağlayıcı araç döngüsü/REPL/skill, Windows/macOS terminal, timeline ve Claude Code/opencode maliyet/kalite ölçülmedi; Gemini thoughtSignature yok, CLI skill satır seçimi yok. REPL kodlama; /agent yok, global memo agent on|off|auto; -chat düz sohbet, /session proje.
+- PLAN_agent_streaming.md + PLAN_cli_coding.md: gerçek sağlayıcı/REPL/skill, Windows/macOS terminal, timeline ve Claude Code/opencode kalite/maliyet ölçülmedi; Gemini thoughtSignature ve CLI skill satır seçimi yok. REPL kullanım kuralları AGENTS.md'de.
 - Subscriptions/Gemini streamed=true cached_tok=0 (önce %85), rapor/maliyet belirsiz; anlatım/düşünce yok, nudge etkisi açık; istenen flash-high yerine flash-n nedeni bilinmiyor.
 
 **Güncelleme / saha / küçük işler**
@@ -59,6 +59,7 @@
 ---
 
 # Son oturum — 11 Kasım — mmproj otomatik indirme ve onarım
-- Kullanıcı yalnız 1. sorunun düzeltilmesini istedi; Windows frontend sonra konuşulacak, davranışı değişmedi. mmproj backend indir/iptal/hata akışına bağlandı; repo/model özel klasör, checksum, alt klasör/pagination, eski modele onarım ve TR/EN düğme var. Rapor docs/MMPROJ_WINDOWS_STARTUP_REVIEW.md.
-- Yerel race: modelstore1.047sn + llama5.542sn PASS; vet PASS. Flutter analyze yalnız eski3 info; mevcut model testleri86 + yeni TR/EN widget2 PASS. L10n literal taraması boş. Stres yok. Gerçek HF/Windows yok.
-- Kod checkpoint af2e1814 push edildi, dal codex/mmproj-download. Son nested kimlik koruma + doküman checkpoint'i bu oturumda ekleniyor. Tam Go/Flutter uzak CI sonucu bekleniyor; PR/release yok. GitHub oturumunu kullanıcı yeniledi, gerekli push/CI işlerini yetkilendirdi.
+- Yalnız mmproj düzeltildi; Windows performansı değişmedi. Otomatik projektör/onarım, model izolasyonu, checksum, pagination/alt klasör ve TR/EN düğme: docs/MMPROJ_WINDOWS_STARTUP_REVIEW.md.
+- Kod af2e1814 + 08d903dc push: codex/mmproj-download; PR/release/main merge yok. Kullanıcı login yeniledi ve gerekli push/CI'ı yetkilendirdi. Son doküman checkpoint'i de push ediliyor.
+- CI43093145396: build/vet + modelstore/llama race PASS; Flutter1019+1 PASS; L10n PASS. Yerel model86+widgetTR/EN2 PASS, lib analiz eski3info. Gerçek HF/Windows ve stres yok.
+- Tam CI KIRMIZI: üç sohbet testi + Go1.26.10 GO-2026-6859. Pre-fix63721d7f karşılaştırma CI43093959788 aynı üç assertion ve güvenlik hatasını doğruladı. Ayrıntılar raporda; bağımsız sorunlar ayrı açık iş. Yeşile dek tekrar yok.

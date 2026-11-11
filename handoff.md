@@ -6,7 +6,7 @@
 
 **mmproj / Windows frontend — 11 Kasım**
 - mmproj düzeltmesi/onarma push edildi; son oturum + docs/MMPROJ_WINDOWS_STARTUP_REVIEW.md. Gerçek “ofical gemma 4ab” repo kimliği/canlı kabul yok. CI pre-fix'te de düşen3sohbet testi ve Go1.26.10 güvenlik güncellemesi ayrı açık.
-- Windows60/40sn ölçülmedi; bulgular/öneri: docs/DESKTOP_STARTUP_LIFECYCLE_REVIEW.md. Installer motoru kuruyor, launcher tekrar home'a kopyalıyor; eager sekmeler/state koruma, paketlenmemiş asenkron fontlar. Windows X varsayılan tray; backend job yalnız motorları kapsar. Unix set-e/no-trap UI hatasında shutdown atlayabilir. Tek paket+oturum sahipliği önerildi; uygulama değişikliği yok, native kabul ve ölçüm açık.
+- Windows60/40sn ölçümü, motor kopyası/sekme/font ve oturum sahipliği: docs/DESKTOP_STARTUP_LIFECYCLE_REVIEW.md + docs/plans/PLAN_desktop_tray_lifecycle.md. İlk tray düzeltmesi push; native/full CI ve gerçek cihaz kabulü açık. Startup/supervisor henüz yok. Linux/mac X varsayılanı host doğrulanana kadar eski hâlinde; kayıtlı tercihler korunur.
 
 **Tanıtım filmi / Reels**
 - 4 Python/Rust Reels ve paket: build_output/marketing/python-rust-reels/; son kareler/altyazı/ZIP doğrulandı, kullanıcı geri bildirimi bekleniyor. Plan docs/plans/PLAN_python_rust_reels.md; önceki oturum ayrıntısı arşivde.
@@ -58,7 +58,7 @@
 
 ---
 
-# Son oturum — 11 Kasım — Windows görünmeyen tray bildirimi
-- Kullanıcı X sonrası pencere yok/backend açık AMA Memo tray simgesi yok dedi; normal tray küçültme kabul edilmedi. Frontend PID/overflow/kurulu sürüm/native hata henüz bilinmiyor.
-- tray_controller.dart: close engeli setIcon öncesi; init hata yakalama yok, onWindowClose `_trayReady` kontrol etmeden gizleyebilir. Somut zayıflık, cihazdaki kök neden kanıtı değil. Kaynak Windows ICO kullanıyor; eski PNG hatasına atfetme. Rapor sonuna kabul/fallback gereksinimi eklendi; üretim değişmedi.
-- Graph coverage metadata_match; kaynak okundu, git diff --check PASS. Yalnız doküman: yeni runtime testi yok. Önceki registry/shutdown race1.500s + Flutter3/3 PASS native tray kanıtı değil.
+# Son oturum — 12 Kasım — Windows tray ilk düzeltme
+- Yetkili uygulama: codex/desktop-tray-lifecycle, son kod3b3fca12 push. X için hazır icon+menu/2sn sınır/taskbar fallback, TR/EN, idempotent Quit. MIT tray_manager0.2.4 vendored: initialized/checked Windows shell, Explorer restore/fail→show, ana engine tray sahipliği. Ayrıntı raporda.
+- Yerel12 PASS/1 Windows-only SKIP; lib+test analiz eski3info, UI literal yok, diff check PASS. Native/full CI 43099165002/43099237732 KUYRUKTA; yeşil iddiası yok. Önceki aday CI iptali istendi; tekrar-yeşile dek yok. Native gerçek Explorer/overflow/mascot kabulü açık.
+- ECC Flutter inceleme; alt ajan/PR/tag/release yok. Plan1 yerel doğrulandı; plan2 native CI bekler. Startup ölçümü/kopya/sekme/font ve üç OS süreç sahibi sonraki ayrı adımlar. Kullanıcı dosyaları korundu.

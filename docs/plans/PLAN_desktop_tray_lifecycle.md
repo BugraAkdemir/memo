@@ -22,7 +22,7 @@ moving on. No UI framework rewrite or literal single-PID migration.
 Native installed Windows reproduction remains required even if automated checks
 pass. Do not equate a method-channel fixture with Explorer/taskbar acceptance.
 
-Item 1 local verification: 7 tray widget scenarios + 3 preference tests pass;
+Item 1 final local verification: 12 pass, 1 Windows-only scenario skipped;
 focused analyze reports no issues; UI literal scan has no matches. Full remote
 CI and native Windows verification follow item 2; this is not native acceptance.
 
@@ -30,3 +30,8 @@ Linux/macOS X-to-tray as the universal default is deferred until native host
 availability is validated. Upstream Linux set_icon reports success without
 proving a StatusNotifier host displays it. Keep existing defaults/saved choices
 in this first Windows-focused change; do not create inaccessible hidden apps.
+
+Item 2 source is implemented in 3b3fca12 (including earlier checkpoints), but the
+checkbox remains open until native CI verification. Windows run 43099165002 and
+full CI 43099237732 were queued at this documentation checkpoint. Actual installed
+Windows/Explorer/overflow/mascot acceptance is still open after automated checks.

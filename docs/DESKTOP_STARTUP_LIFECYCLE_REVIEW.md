@@ -1,6 +1,6 @@
 # Desktop startup and process lifetime — 11 November 2026
 
-Status: investigation and proposed direction; no production behavior changed. The reported Windows 60-second first launch / 40-second later launch has not been profiled on Windows. Code findings below do not establish how much of that time each component consumes.
+Original investigation status: proposed direction, with no production behavior changes at that point. The implementation checkpoint below records subsequent tray fixes. The reported Windows 60-second first launch / 40-second later launch has not been profiled on Windows. Code findings below do not establish how much of that time each component consumes.
 
 ## Startup findings
 
@@ -89,3 +89,55 @@ The user reports that X removes the window, backend/helpers remain, and no Memo 
 Source inspection of `frontend/lib/core/tray_controller.dart` finds that `_init` enables close interception before awaiting `trayManager.setIcon`; there is no local initialization error handler. `_trayReady` gates menu rebuilding but is not checked by `onWindowClose` before hiding. Therefore failed/pending tray setup can leave a hide path active without established tray readiness. This is a concrete code weakness, not proof that it caused this device's missing icon. The current source already selects `memo.ico` on Windows; do not assume the older PNG issue explains the user's installed build.
 
 Acceptance requirement: X must only hide when a usable tray interaction is established; initialization failure needs a recoverable fallback that keeps Memo reachable. Successful plugin initialization alone may not prove Explorer still exposes the icon, so test actual installed Windows behavior and Explorer restart as well as initialization errors. Full Quit must terminate owned helpers separately from hide. No production fix in this investigation.
+
+## Implementation checkpoint — 12 November — Windows tray recovery
+
+Branch `codex/desktop-tray-lifecycle`, production checkpoint `3b3fca12` (includes
+`806d1c32`, `bb9b755a`, `9beaf410`). The first two scoped items are tracked in
+`docs/plans/PLAN_desktop_tray_lifecycle.md`; startup and session ownership work
+has not been implemented in this checkpoint.
+
+- Serialize X events and share in-flight tray initialization. Hide only after
+  icon and Open/Quit menu setup succeeds; bound close-time waiting to two seconds.
+  Failures minimize to the taskbar with a TR/EN explanation, preserving the
+  preference, client registration and first-successful-tray notice. Retry on X.
+- Make Quit idempotent; test actual menu Open/Quit callbacks, unregister on Quit
+  only, first-close acknowledgement and pending/failing/recovered setup.
+- Vendor the exact MIT tray_manager 0.2.4 dependency with its license. Upstream
+  Dart/Linux/macOS sources are unchanged (11 files compared byte-for-byte). Windows now zero-initializes shell
+  structures, checks image and shell-registration results, owns image/menu
+  resources and keeps the main engine's channel when a mascot engine registers.
+- Restore the icon on TaskbarCreated; if restoration fails, reveal Memo. A final
+  checked Windows shell query prevents hiding after Explorer loss while the
+  first-close dialog was open. Overflow placement remains controlled by Windows.
+- Preserve the existing Windows-only default and saved choices. An attempted
+  universal desktop default was reverted: Linux's upstream success response does
+  not prove a StatusNotifier host displays the icon. Native host verification
+  must precede enabling X-to-tray by default on other platforms.
+
+Local final verification:
+
+```text
+flutter test --no-pub --concurrency=1 test/widgets/tray_controller_test.dart test/providers/minimize_to_tray_default_test.dart
++12 ~1: All tests passed!
+# The skipped scenario requires Windows: shell loss during the first-close hint.
+
+flutter analyze --no-pub lib/ test/widgets/tray_controller_test.dart test/providers/minimize_to_tray_default_test.dart
+3 pre-existing use_build_context_synchronously infos; no errors or warnings.
+Committed Flutter UI literal scan: 7 Dart files, no matches. git diff --check: pass.
+```
+
+Remote verification on `3b3fca12` requested:
+[Windows native tests/build](https://github.com/BugraAkdemir/memo/actions/runs/43099165002)
+and [full CI](https://github.com/BugraAkdemir/memo/actions/runs/43099237732).
+Both were queued when this checkpoint was recorded; **no native/full-CI pass is
+claimed**. Superseded candidate runs were asked to cancel, not retried until green.
+The Windows workflow compiles native failure/recovery tests and the full Windows
+frontend; the shell function is injected in the native tests, so Explorer
+restart/overflow/mascot/installed-build acceptance still needs a real Windows
+desktop. Existing baseline full-CI failures remain separately documented.
+
+Coverage was checked for the new evidence paths. The graph reports partial
+parsing of native plugin member declarations (lines 62–82); those declarations
+and the affected implementation were read directly. This check does not prove
+complete graph coverage.

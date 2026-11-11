@@ -1,3 +1,10 @@
+# Son oturum — 11 Kasım — masaüstü başlangıç ve süreç sahipliği incelemesi
+- docs/DESKTOP_STARTUP_LIFECYCLE_REVIEW.md: installer/tekrar kopya, sekme/font nedenleri, tray/registry/job/Unix cleanup boşlukları ve üç platform için öneri+kabul senaryoları. Gerçek Windows40–60sn darboğazı kanıtlanmadı; üretim kodu değişmedi.
+- Tek PID yerine tek paket/giriş ve sahipli alt süreçler; paylaşılan CLI/backend, updater ve dış uygulama istisnaları korunmalı. Uygulama adımları yalnız öneri.
+- Sınırlı yerel registry/shutdown race: PASS1.500s; tray varsayılanları Flutter3/3 PASS. Windows/mac native süreç testi yok; önceki tam CI bağımsız kırmızıları sürüyor. Doküman checkpoint commit; PR/tag/release yok.
+
+---
+
 # Son oturum — 11 Kasım — mmproj otomatik indirme ve onarım
 - Yalnız mmproj düzeltildi; Windows performansı değişmedi. Otomatik projektör/onarım, model izolasyonu, checksum, pagination/alt klasör ve TR/EN düğme: docs/MMPROJ_WINDOWS_STARTUP_REVIEW.md.
 - Kod af2e1814 + 08d903dc push: codex/mmproj-download; PR/release/main merge yok. Kullanıcı login yeniledi ve gerekli push/CI'ı yetkilendirdi. Son doküman checkpoint'i de push ediliyor.

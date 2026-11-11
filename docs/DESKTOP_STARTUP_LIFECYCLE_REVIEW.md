@@ -81,3 +81,11 @@ Official references:
 - [Linux PR_SET_PDEATHSIG](https://www.man7.org/linux/man-pages/man2/PR_SET_PDEATHSIG.2const.html): parent-thread semantics and limits.
 - [Google Fonts package](https://pub.dev/packages/google_fonts): asset bundling and runtime fetching.
 - [Flutter custom embedders](https://github.com/flutter/flutter/blob/master/docs/engine/Custom-Flutter-Engine-Embedders.md): low-level hosting interface, not automatic integration of external services.
+
+## User clarification: Windows X leaves no visible tray icon
+
+The user reports that X removes the window, backend/helpers remain, and no Memo tray application is visible. This is not accepted as successful minimize-to-tray behavior. Whether the frontend process remains, whether Explorer puts the icon in overflow, the installed build version and native tray initialization results have not been established.
+
+Source inspection of `frontend/lib/core/tray_controller.dart` finds that `_init` enables close interception before awaiting `trayManager.setIcon`; there is no local initialization error handler. `_trayReady` gates menu rebuilding but is not checked by `onWindowClose` before hiding. Therefore failed/pending tray setup can leave a hide path active without established tray readiness. This is a concrete code weakness, not proof that it caused this device's missing icon. The current source already selects `memo.ico` on Windows; do not assume the older PNG issue explains the user's installed build.
+
+Acceptance requirement: X must only hide when a usable tray interaction is established; initialization failure needs a recoverable fallback that keeps Memo reachable. Successful plugin initialization alone may not prove Explorer still exposes the icon, so test actual installed Windows behavior and Explorer restart as well as initialization errors. Full Quit must terminate owned helpers separately from hide. No production fix in this investigation.

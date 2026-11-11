@@ -58,7 +58,7 @@
 
 ---
 
-# Son oturum — 11 Kasım — masaüstü başlangıç ve süreç sahipliği incelemesi
-- docs/DESKTOP_STARTUP_LIFECYCLE_REVIEW.md: installer/tekrar kopya, sekme/font nedenleri, tray/registry/job/Unix cleanup boşlukları ve üç platform için öneri+kabul senaryoları. Gerçek Windows40–60sn darboğazı kanıtlanmadı; üretim kodu değişmedi.
-- Tek PID yerine tek paket/giriş ve sahipli alt süreçler; paylaşılan CLI/backend, updater ve dış uygulama istisnaları korunmalı. Uygulama adımları yalnız öneri.
-- Sınırlı yerel registry/shutdown race: PASS1.500s; tray varsayılanları Flutter3/3 PASS. Windows/mac native süreç testi yok; önceki tam CI bağımsız kırmızıları sürüyor. Doküman checkpoint commit; PR/tag/release yok.
+# Son oturum — 11 Kasım — Windows görünmeyen tray bildirimi
+- Kullanıcı X sonrası pencere yok/backend açık AMA Memo tray simgesi yok dedi; normal tray küçültme kabul edilmedi. Frontend PID/overflow/kurulu sürüm/native hata henüz bilinmiyor.
+- tray_controller.dart: close engeli setIcon öncesi; init hata yakalama yok, onWindowClose `_trayReady` kontrol etmeden gizleyebilir. Somut zayıflık, cihazdaki kök neden kanıtı değil. Kaynak Windows ICO kullanıyor; eski PNG hatasına atfetme. Rapor sonuna kabul/fallback gereksinimi eklendi; üretim değişmedi.
+- Graph coverage metadata_match; kaynak okundu, git diff --check PASS. Yalnız doküman: yeni runtime testi yok. Önceki registry/shutdown race1.500s + Flutter3/3 PASS native tray kanıtı değil.

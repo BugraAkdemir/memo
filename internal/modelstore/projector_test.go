@@ -328,4 +328,8 @@ func TestBundleWithoutProjectorStillDownloadsTextModel(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "nested", "model.gguf")); err != nil {
 		t.Fatal(err)
 	}
+	models := store.ListLocalModels()
+	if len(models) != 1 || models[0].Filename != "nested/model.gguf" || models[0].RepoID != "acme/text" {
+		t.Fatalf("nested download lost repository identity: %+v", models)
+	}
 }

@@ -33,8 +33,9 @@ type HFModelResult struct {
 // modelMeta is stored as a sidecar JSON file (<model>.meta.json) next to each
 // downloaded GGUF so we can surface HF capabilities without network calls.
 type modelMeta struct {
-	RepoID string   `json:"repo_id"`
-	Tags   []string `json:"tags"`
+	RepoID         string   `json:"repo_id"`
+	SourceFilename string   `json:"source_filename,omitempty"`
+	Tags           []string `json:"tags"`
 	// SupportsTools is true if EITHER HF's own tags said so at download
 	// time OR the GGUF file's own embedded chat template references
 	// tool_calls (internal/gguf.Metadata.SupportsTools, read once and
@@ -694,11 +695,14 @@ func (s *Store) doDownloadTo(ctx context.Context, entry *downloadEntry, repoID, 
 		// name for a file it never nested under one. Persist a repoID-only
 		// sidecar so the model isn't stuck with a permanently empty RepoID;
 		// HF tags/capabilities just stay unknown until re-downloaded.
-		if metaErr := saveModelMeta(destPath, &modelMeta{RepoID: repoID}); metaErr != nil {
+		if metaErr := saveModelMeta(destPath, &modelMeta{RepoID: repoID, SourceFilename: filename}); metaErr != nil {
 			logx.Printf("modelstore: saveModelMeta (repoID-only fallback) failed for %s: %v", destPath, metaErr)
 		}
-	} else if err := saveModelMeta(destPath, meta); err != nil {
-		logx.Printf("modelstore: saveModelMeta failed for %s: %v", destPath, err)
+	} else {
+		meta.SourceFilename = filename
+		if err := saveModelMeta(destPath, meta); err != nil {
+			logx.Printf("modelstore: saveModelMeta failed for %s: %v", destPath, err)
+		}
 	}
 
 	return ctx.Err()
@@ -809,6 +813,11 @@ func (s *Store) ListLocalModels() []LocalModel {
 		}
 		meta := loadModelMeta(path)
 		if meta != nil {
+			// Preserve the HF-relative filename for nested downloads so the
+			// model picker can match the downloaded file to its repository entry.
+			if validRepoFile(meta.SourceFilename) {
+				lm.Filename = meta.SourceFilename
+			}
 			lm.SupportsTools = meta.SupportsTools
 			lm.SupportsVision = meta.SupportsVision
 			lm.SupportsCode = meta.SupportsCode

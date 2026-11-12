@@ -1,3 +1,101 @@
+# Son oturum — 11 Kasım — Windows görünmeyen tray bildirimi
+- Kullanıcı X sonrası pencere yok/backend açık AMA Memo tray simgesi yok dedi; normal tray küçültme kabul edilmedi. Frontend PID/overflow/kurulu sürüm/native hata henüz bilinmiyor.
+- tray_controller.dart: close engeli setIcon öncesi; init hata yakalama yok, onWindowClose `_trayReady` kontrol etmeden gizleyebilir. Somut zayıflık, cihazdaki kök neden kanıtı değil. Kaynak Windows ICO kullanıyor; eski PNG hatasına atfetme. Rapor sonuna kabul/fallback gereksinimi eklendi; üretim değişmedi.
+- Graph coverage metadata_match; kaynak okundu, git diff --check PASS. Yalnız doküman: yeni runtime testi yok. Önceki registry/shutdown race1.500s + Flutter3/3 PASS native tray kanıtı değil.
+
+---
+
+# Son oturum — 11 Kasım — masaüstü başlangıç ve süreç sahipliği incelemesi
+- docs/DESKTOP_STARTUP_LIFECYCLE_REVIEW.md: installer/tekrar kopya, sekme/font nedenleri, tray/registry/job/Unix cleanup boşlukları ve üç platform için öneri+kabul senaryoları. Gerçek Windows40–60sn darboğazı kanıtlanmadı; üretim kodu değişmedi.
+- Tek PID yerine tek paket/giriş ve sahipli alt süreçler; paylaşılan CLI/backend, updater ve dış uygulama istisnaları korunmalı. Uygulama adımları yalnız öneri.
+- Sınırlı yerel registry/shutdown race: PASS1.500s; tray varsayılanları Flutter3/3 PASS. Windows/mac native süreç testi yok; önceki tam CI bağımsız kırmızıları sürüyor. Doküman checkpoint commit; PR/tag/release yok.
+
+---
+
+# Son oturum — 11 Kasım — mmproj otomatik indirme ve onarım
+- Yalnız mmproj düzeltildi; Windows performansı değişmedi. Otomatik projektör/onarım, model izolasyonu, checksum, pagination/alt klasör ve TR/EN düğme: docs/MMPROJ_WINDOWS_STARTUP_REVIEW.md.
+- Kod af2e1814 + 08d903dc push: codex/mmproj-download; PR/release/main merge yok. Kullanıcı login yeniledi ve gerekli push/CI'ı yetkilendirdi. Son doküman checkpoint'i de push ediliyor.
+- CI43093145396: build/vet + modelstore/llama race PASS; Flutter1019+1 PASS; L10n PASS. Yerel model86+widgetTR/EN2 PASS, lib analiz eski3info. Gerçek HF/Windows ve stres yok.
+- Tam CI KIRMIZI: üç sohbet testi + Go1.26.10 GO-2026-6859. Pre-fix63721d7f karşılaştırma CI43093959788 aynı üç assertion ve güvenlik hatasını doğruladı. Ayrıntılar raporda; bağımsız sorunlar ayrı açık iş. Yeşile dek tekrar yok.
+
+---
+
+# Son oturum — 11 Kasım — mmproj / Windows frontend incelemesi
+- Üretim kodu değişmedi; rapor docs/MMPROJ_WINDOWS_STARTUP_REVIEW.md. mmproj eksikliği yerel HTTP/Go overlay ile üretildi; Windows frontend kök neden ölçümü açık, font/ilk sekme yükü aday.
+- Doğrulama: modelstore race suite PASS (1.019sn), tek overlay repro PASS (1.010sn); GOMAXPROCS=2, -p1, stres yok. Tam Go/Flutter veya Windows koşulmadı; düzeltme iddiası yok.
+- Yalnız inceleme dokümanları/handoff güncellendi; bu oturumda commit/push yok. Sonraki iş kullanıcı yönlendirmesiyle düzeltme ve Windows süre izi.
+
+---
+
+# Son oturum — 11 Kasım — Python/Rust Instagram kesitleri
+- Kullanıcı mevcut filmden birkaç dikey Reels istedi; 4 kesit çıkarıldı. Kaynak orijinal ses/görüntü; yeni TTS/ücretli çağrı/yayınlama yok.
+- Çıktı `build_output/marketing/python-rust-reels/`: 4 MP4, 4 kapak, SRT'ler, paylaşım metinleri README ve toplu `python-rust-reels-paketi.zip`. Konular: Python altındaki C++, Python içindeki Rust, darboğaz, Rust öğrenme kararı. Süreler 52,17 / 46,73 / 38,17 / 47,97 sn.
+- Kaynaklar `scripts/rust-ai-slides/src/film/ReelBackground.tsx`, `script/create_reels.py`; Remotion çerçeve + FFmpeg gerçek kesim/birleştirme/ASS. 3. kesit iki aralıktan birleşir. Kelime aralığıyla komşu ASR cue sızıntısı engellendi; plan `docs/plans/PLAN_python_rust_reels.md`.
+- Doğrulama: TypeScript exit 0; 4/4 H.264/AAC 1080×1920/30 tam decode exit 0/hata 0 bayt; 103 cue/407 kelime korunuyor; altyazı sınırları ve ZIP 14 dosya CRC PASS. Son başlık/görüntü kareleri incelendi. Rapor aynı çıktı klasöründe `verification.json`. Push yok. Sonraki: kullanıcı kesit geri bildirimi.
+
+## Önceki açık işler — 11 Kasım sıkıştırma öncesi
+
+**Tanıtım filmi / önceki oturumdan kalanlar (10 Kasım)**
+- `5a6f35ba` (film planı) ve `e68c0482` (ay adlı tarih ön süzgeci) önceki handoff'ta yerel/push edilmemişti; bu oturumda push durumu kontrol edilmedi. Telefon bölümü çizim; gerçek kayıt kullanıcıda (plan §6). Whisper/SRT açık.
+- Demo verileri: taslaklar #73/#74/#75 (#74 `#onay 74`), demo sohbet/hafıza/takvim, iki kutuda test mailleri ve masaüstünde `Karışık Fotoğraflar`/`Messy Photos`; onaysız temizleme. Config önceki hâlinde, akdemirbugra14 full_auto (önceki oturum kaydı).
+- Önceki oturum hataları: izin timeout'u sağlayıcı hatası görünüyor; Phi-3 mini 4k bağlam taşıyor/Türkçesi zayıf; Gizli Mod alt ajan hatası; otomatik+açık istek çift takvim; boş veride onboarding completed nedeni belirsiz. Ayrıntılar arşivde.
+
+**Dijital İkiz / Mail**
+- **Günlük brifing (7 Kasım):** kod ve testler bitti, canlı kabul yok: gerçek Telegram/WhatsApp/mail teslimi, brifing modeli, sihirbaz/panel görünümü. Kullanıcı temiz veri klasörüyle gezip saati/kanalları denemeli. Ayrıntı aşağıda “Son oturum”.
+- Plan (`docs/plans/PLAN_mail_and_autonomous_system.md`) kod ve canlı doğrulama olarak bitti (Adım 9 dahil, `docs/DIGITAL_TWIN_AND_MAIL.md`; gerçek Gmail `akdemirbugra5` ↔ `akdemirbugra14` + Subscriptions). Açık olan yalnız kullanıcı kabulü: Adım 3–4 kutuları (`docs/DIGITAL_TWIN_DEVICE_ACCEPTANCE.md` A+B), WhatsApp/Telegram `#onay` ve ses (C+D); canlıda radar vade anı gözlenmedi.
+- Bilinen zayıflık: giriş incelemesi (LLM, eşik ≥0,5) doğal bir "bak ve söyle" cümlesini bir kez saldırı saydı. Ana Memo ayarlarında saat dilimi UTC (Istanbul önerilir; sihirbaz artık saat dilimi sorar, yalnız mail bağlıyken).
+- 3 Kasım gece E2E (gerçek Gmail 5↔14): Adım 1–7 canlı koşuldu, 8 gerçek hata düzeltildi (son: `e947bd67`); sonuçlar `docs/plans/PLAN_e2e_overnight.md`. Açık: WhatsApp/Telegram/ses ve `#onay` cihaz kabulü (skorlayıcı zaman aşımı 15 sn'ye çıkarıldı, `e16125d6`); ana Memo ayarları geri alındı.
+- a7324752 SMTP gönderildi/eski kayıt pending: TEKRAR GÖNDERME. Yeni akış geçmiş kontrolüyle engeller. 453da7f6 farklı gönderen pending/Drafts; SMTP yok, skor yok/onay gerekir.
+- Adım5 teknik ve gerçek IMAP/model/Drafts/eski manuel SMTP/teslim kullanıcı PASS: docs/DIGITAL_TWIN_AUTONOMY.md. Varsayılan kapalı; ayrı yanıt modeli, yerel Whisper/ffmpeg, Telegram sahip.
+- Adım6 teknik/CI PASS: docs/DIGITAL_TWIN_APPROVAL.md. Geri al/otomatik gönderim ve UI/WhatsApp/Telegram sahip onayı bağlı; eski adaylar açılmaz. Gerçek kanal/native/ses kabulü açık; cihaz test yönergesi aynı dokümanda. İptal uzak Drafts/takvimi silmez; belirsiz gönderim tekrarlanmaz.
+- Adım4 kişi/üslup/Git/doluluk ve Adım3 görünüm/charset/sayaç/göreli tarih cihaz kabulü açık: docs/DIGITAL_TWIN_CONTACTS.md + docs/MAIL_SECURITY.md. İsim eşleme/backfill yok; saldırı engeli kullanıcı PASS, izin aynı. Sonraki adım kullanıcı geri bildirimiyle.
+
+**Performans benchmark — kullanıcı duraklattı (29 Ekim)**
+- docs/PERFORMANCE_BENCHMARK_CHECKPOINT.md + data/performance-benchmark/PAUSED.json: son koşuda yalnız aşama1 kayıtlı, data aşama2. Kalibrasyon/resume/aşama2–3/rapor/doğrulama açık. Runner baştan siler; körlemesine çalıştırma.
+
+**Telemetri / resmî sürüm öncesi (`docs/TELEMETRY.md`, `PLAN_telemetry.md`)**
+- 27 Ekim: resmî derlemede günlük paylaşım sorusuz açık; sihirbaz/Gizlilik kapatır, kayıtlı hayır korunur. Kaynak kapalı. Veri klasörü başına kimliksiz `/v1/install`, paylaşım kapalıyken de gider; kaynak ve MEMO_TELEMETRY=off engeller. Varsayılanın ilk günü raporlanmaz.
+- **Sunucu (`/v1/install` dahil) dağıtıldı ve doğrulandı** — kullanıcı 9 Kasım'da teyit etti; bir daha açık iş diye sunma. 30 sahte demo cihaz 27 Ekim'de silindi.
+- Kullanıcıda: Cloudflare belirtecini sil; DB/panel parolalarını değiştir; `.env.local` DB_PASSWORD/belirteç satırlarını temizle.
+- Eksik bağlantılar: Whisper başlatma/çıkış; Dart/motor çökmesi; offered/downloaded güncelleme; needs_newer_app/not_for_this_machine nedenleri; yerel paketleme betiklerinin official damgası; site gizlilik sayfası. (v5.0.0 notları 7 Kasım'da yazıldı: `versinNote/v5.0.0.md` + `versinNote/tr/`; tarih tag anında güncellenmeli.) Eski “telemetri yok” sürümünden varsayılan açık geçiş yayın notunda açık yazılmalı.
+- Canlı tel gönderimi, native sihirbaz, Windows/macOS, tag official damgası, ertesi gün geçişi denenmedi. İzole ikili+sahte sunucuda kurulum/sayaç/preview PASS (27 Ekim).
+
+**Yerel hız / motorlar (26 Ekim, AGENTS.md “Local-model speed”)**
+- `libggml-vulkan.so` yalnız yerel linux/cpu; R2 ve `~/.memo` güncellenmedi. Yayın: vendor_llama + rclone + publish_component; `--requires-app` yeni kodlu sürüm olmalı (eskide CPU tercihi/Whisper sessiz GPU'ya geçebilir).
+- Ölçülmedi: ayrık Vulkan offload, MoE --n-cpu-moe, araç üreten model+speklasyon, CUDA/ROCm spekülasyon, gerçek Whisper konuşması (--no-gpu kalır), Windows/macOS probe.
+- Linux llama b11669 (nvidia b9441), cpu whisper 1.9.5. Whisper llama ggml arka uçlarını da yükler: yükseltmede tekrar dene. Statik Whisper eski CPU'da AVX2/FMA/F16C riski ölçülmedi; AMD ROCm 10 klasörü ~1,2 GB gerçek GPU'da denenmedi.
+
+**Alt ajan (`docs/plans/PLAN_chat_subagents.md`, `docs/CHAT_SUBAGENTS.md`)**
+- Web UI canlı kısa test PASS; uzun iş/native ölçülmedi. Gerçek Antigravity/Waydroid hız/kalite ve bildirilen 300 dk geçmişi yok (`docs/TASKLOOP_PERFORMANCE_REVIEW.md`).
+- Ana incelemede sidebar spinner var, Durdur yok; kesinti/sonraki sonuç testi eksik. Kesilmiş inceleme sonraki sonuçları tutmaz; Resume main review gerekir, ana ajanda resume yok. Çocuk kayıt hatası context canceled olabilir.
+
+**Proje / sohbet / skill**
+- `docs/plans/PLAN_project_folders.md` P0–P5 tamam; hafıza Code Mode'dan bağımsız, hafıza anahtarlarına bağlı. Açık: Flutter `/` yalnız global skill, proje skill backend `/ad` ile çalışır; proje izin arayüzü yok; provider_policy yalnız ayrılmış alan. Skill tasarımı kapsamı belirlenmedi.
+- Denenmedi: GitHub skill zip/kurulum onayı, modelin `.memo/AGENTS.md` ve izinlere uyması, kullanıcı DB göçü, Windows/macOS Guard. `data/backups/memory-pre-project-id-*` yerel kalır, otomatik silinmez.
+- Live Mode ev köklü arka planı normal sohbet; diğer ev köklü ajan hafıza almaz. Code Mode kapalı projede takvim/WhatsApp açık, kişisel hafıza/kimlik izole.
+- Birleşik liste: web ajan/klasör/ilk mesaj denendi; native/öneri/animasyon ölçülmedi. IndexedStack eski ajan indeksi boş, ProjectPath ajan işareti. Başlık ilk kelimeler; LLM başlığı kullanıcı kararı ister. WelcomeView CLI; CLI `/` değişmedi.
+- Skill: `/` cümle ortası/imleç/IME, stop görünümü, use_skill canlı denenmedi. Adsız istek kelime eşleştirerek ≤3 seçer, model çağırmaz. Dosya/resim skill tespiti yok; prompt'tan düşen “kullanılıyor” kalabilir; hata/timeout skill_used kaybolabilir; stop Türkçe. Masaüstü toggle yok; /skill:on|off|add|remove ve REPL /skill var.
+
+**Akış / REPL (`docs/plans/PLAN_agent_streaming.md`, `docs/plans/PLAN_cli_coding.md`)**
+- Gerçek sağlayıcı araç döngüsü, modelle REPL/skill, Windows/macOS terminali, Flutter timeline ve Claude Code/opencode kalite/maliyet ölçülmedi. Gemini thoughtSignature yok; CLI skill satırı seçimi denenmedi.
+- REPL hep kodlama; /agent yok; global memo agent on|off|auto var. -chat düz sohbet açabilir; /session proje sohbetleri.
+- Subscriptions/Gemini canlı streamed=true, cached_tok=0 (önce %85): raporlama mı maliyet mi bilinmiyor. Araç yanında anlatım/düşünce gelmedi, boş adım nudge etkisi açık. İstenen gemini-3.8-flash-high yerine flash-n sunuldu; neden bilinmiyor.
+
+**Güncelleme / saha**
+- 4.7.0 yayında (`docs/plans/PLAN_auto_update.md`, `docs/AUTO_UPDATE.md`). Gerçek Windows Setup.exe/ShellExecute, macOS, GPU/model motor sonrası restart ve Flutter penceresi denenmedi; macOS betik kurulumunda başlatıcı yok. Windows/macOS ENGINES işareti kanıtsız: eklenmeden güncelleme almaz.
+- issue #42–47 açık; indirme bitince kendiliğinden kapanır (yeniden başlat onayı yok); Docker daemon son denemede kapalıydı. İmza: `~/.config/memo-release/update-signing.key`, Actions MEMO_UPDATE_SIGNING_KEY; anahtar geçişi eski imzalı sürüm ister.
+- docs/plans/PLAN_v4_6_completion.md: cihaz/OAuth/kota/model kalitesi kanıtsız. Mobil cihaz/emülatör, MemoRoot provider yenileme, Android/iOS HTTP; Auto Route kalite/kota/GGUF soğuk yükleme, karar/doğrulama kalite/hız/maliyet, sihirbaz/abonelik giriş penceresi açık.
+- Web sohbet Beta yalnız signed-out/fake site; signed-in ChatGPT/Claude denenmedi. Uzak giriş token değişimi, HTTP clipboard fallback, Telegram/WhatsApp, görsel üretimi ve Flutter görsel/kota kartları canlı denenmedi. Antigravity flash-image hesapta 500; WhatsApp fake taşıması yok.
+- Windows/macOS/arm64 sidecar yalnız CI build; Claude login/quota yok. Codex yalnız30d; 5s/7g denenmedi.
+
+**Küçük noktalar / test ortamı**
+- Pi embedding build/reboot denenmedi; eski embedding_auto_start:false ezilmez, elle açmak tercihi kaydeder. Eski origin token döndürme kullanıcıda; satılmış alan adındaki eski REPL indirmeleri kaldırılıp sürüm duyurulmalı.
+- Yapıştırma kutusu Done'a dek açık; login.go s.tail erken okuma ölçülmedi. Minimal Mod auto-compact atlar; görsel modeli etiketsiz; ikinci model menüsü ortak listeyi kullanır.
+- MEMO_DATA_DIR testlerinde config.ResetForTests eksikleri dosya sızdırabilir. ngrok.TestFetchURL_NoServer yerel API yüzünden düşebilir, tünele dokunma. Yoğun derlemede wav_player stop testi 2s timeout görmüştü.
+- Açık kararsız testler: Tailscale RebindsFromLoopback eski8/150 yeni2/150; livemode SendAudioRoutesToCurrentInner; BootstrapTokenAuth temp temizliği; DuckDuckGo captcha; webchat PressingItAgainReplacesAWaitingAttempt. Yerel yük testi çalıştırma; kullanıcı sistemi dondurduğunu bildirdi. Yeşile dek koşma. TamperedDownloadChangesNothing 29 Ekim'de düzeltildi: eski36/150, yeni0/150.
+
+---
+
 # Son oturum — 11 Kasım — global Remotion Explainer becerisi
 - Kullanıcının beğendiği Rust/Python film formatı, Memo bağımsız global `$remotion-explainer` becerisine dönüştürüldü. Asıl paket `/home/bugra/Documents/remotion-explainer`; `~/.codex/skills/remotion-explainer` ona symlink. Memo içine skill kurulmadı.
 - Türkçe kapsamlı README, 4 üretim/stil/vaka referansı, bağımsız Remotion starter (font lisansları dahil), 4 Python yardımcısı ve 20 sn sessiz demo. Memo maskotları/kişisel hesaplar varsayılan değil; ses/API anahtarı kopyalanmadı.

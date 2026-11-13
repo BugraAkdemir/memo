@@ -302,6 +302,28 @@ func TestBinarySearchBasesFrom_IncludesParentOfExeDir(t *testing.T) {
 	}
 }
 
+func TestBinarySearchBasesFrom_PrefersExecutableOverWorkingDir(t *testing.T) {
+	exePath := filepath.Join("/opt/Memo", "memo-backend")
+	bases := binarySearchBasesFrom(exePath)
+	wantExeDir := filepath.Join("/opt/Memo")
+	exeIdx := slices.Index(bases, wantExeDir)
+	cwdIdx := slices.Index(bases, ".")
+	if exeIdx < 0 || cwdIdx < 0 || exeIdx >= cwdIdx {
+		t.Fatalf("bases = %v; want exeDir (%q) before working dir \".\"", bases, wantExeDir)
+	}
+}
+
+func TestLlamaServerCandidatesFor_DarwinPrefersArchSpecific(t *testing.T) {
+	arm := llamaServerCandidatesFor("darwin", "arm64")
+	if len(arm) < 2 || arm[0] != "llama-server-arm64" || arm[1] != "llama-server" {
+		t.Fatalf("darwin/arm64 candidates = %v, want [llama-server-arm64 llama-server]", arm)
+	}
+	amd := llamaServerCandidatesFor("darwin", "amd64")
+	if len(amd) < 2 || amd[0] != "llama-server-x64" || amd[1] != "llama-server" {
+		t.Fatalf("darwin/amd64 candidates = %v, want [llama-server-x64 llama-server]", amd)
+	}
+}
+
 func countEnvKey(env []string, key string, caseInsensitive bool) int {
 	count := 0
 	for _, entry := range env {

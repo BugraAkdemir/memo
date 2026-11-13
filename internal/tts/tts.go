@@ -146,23 +146,20 @@ func binarySearchBases() []string {
 }
 
 // binarySearchBasesFrom is the pure part of binarySearchBases, split out so
-// it can be tested without mocking os.Executable: the current working
-// directory, the executable's own directory, and that directory's parent.
-// The parent matters for the installed CLI, whose binary lives one level
-// deeper (~/.memo/bin/memo) than the bundled "binaries/" tree it ships next
-// to (~/.memo/binaries/...) — matching internal/llama's
-// binarySearchBasesFrom, which exists specifically because an earlier
-// version of this same search (missing the parent) failed to find
-// llama-server under the installed CLI layout. This function previously had
-// that identical bug (missing the parent) before it was caught in review.
+// it can be tested without mocking os.Executable: the executable's own
+// directory, that directory's parent, and finally the current working
+// directory (matching internal/llama and internal/cliproxy).
 func binarySearchBasesFrom(exePath string) []string {
-	bases := []string{"."}
-	exeDir := filepath.Dir(exePath)
-	if exeDir != "." {
-		bases = append(bases, exeDir)
-		if parent := filepath.Dir(exeDir); parent != exeDir {
-			bases = append(bases, parent)
+	var bases []string
+	if exePath != "" {
+		exeDir := filepath.Dir(exePath)
+		if exeDir != "." {
+			bases = append(bases, exeDir)
+			if parent := filepath.Dir(exeDir); parent != exeDir && parent != "." {
+				bases = append(bases, parent)
+			}
 		}
 	}
+	bases = append(bases, ".")
 	return bases
 }

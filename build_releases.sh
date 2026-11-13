@@ -435,15 +435,16 @@ if %ERRORLEVEL% EQU 0 (
 
 set "BACKEND_PID="
 if not defined BACKEND_ALREADY_RUNNING (
-    REM Stop stale instances gracefully (shutdown API, then force)
-    powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 3 -ErrorAction Stop } catch {}" >nul 2>&1
-    timeout /t 2 /nobreak >nul
-    taskkill /F /IM memo-backend.exe >nul 2>&1
-    taskkill /F /IM llama-server.exe >nul 2>&1
+    REM Only clean stale instances if memo-backend.exe is actually lingering.
+    tasklist /FI "IMAGENAME eq memo-backend.exe" 2>nul | find /I "memo-backend.exe" >nul
+    if %ERRORLEVEL% EQU 0 (
+        powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 2 -ErrorAction Stop } catch {}" >nul 2>&1
+        taskkill /F /IM memo-backend.exe >nul 2>&1
+        taskkill /F /IM llama-server.exe >nul 2>&1
+    )
 
-    REM Start backend, capture PID for targeted cleanup
-    for /f %%i in ('powershell -NoProfile -Command "& { $p = Start-Process -FilePath '%APP_DIR%memo-backend.exe' -WorkingDirectory '%MEMO_HOME%' -PassThru; $p.Id }"') do set BACKEND_PID=%%i
-    timeout /t 1 /nobreak >nul
+    REM Start backend, capture PID for targeted cleanup, and poll readiness.
+    for /f %%i in ('powershell -NoProfile -Command "& { $p = Start-Process -FilePath '%APP_DIR%memo-backend.exe' -ArgumentList '--headless','--auto-shutdown' -WorkingDirectory '%MEMO_HOME%' -PassThru; $deadline = [DateTime]::UtcNow.AddMilliseconds(3000); while ([DateTime]::UtcNow -lt $deadline -and -not $p.HasExited) { try { Invoke-WebRequest -Uri 'http://127.0.0.1:8090/api/status' -Method GET -TimeoutSec 1 -UseBasicParsing -ErrorAction Stop | Out-Null; break } catch { Start-Sleep -Milliseconds 50 } }; $p.Id }"') do set BACKEND_PID=%%i
 )
 
 REM Start Flutter frontend (blocks until closed)

@@ -61,13 +61,13 @@ func TestBinarySearchBases(t *testing.T) {
 		t.Fatalf("expected the downloaded-engine tree and at least one bundled base, got %v", bases)
 	}
 	// The downloaded-engine tree comes first so a newer whisper.cpp the updater
-	// fetched shadows the bundled one; the bundled search order is unchanged
-	// after it, starting with the working directory.
+	// fetched shadows the bundled one; bundled resolution then checks the
+	// executable's directory/parent before falling back to ".".
 	if want := overrideRootFn(); bases[0] != want {
 		t.Errorf("first base = %q, want the override root %q", bases[0], want)
 	}
-	if bases[1] != "." {
-		t.Errorf("second base = %q, want %q", bases[1], ".")
+	if bases[len(bases)-1] != "." {
+		t.Errorf("last base = %q, want %q (after executable roots)", bases[len(bases)-1], ".")
 	}
 }
 
@@ -307,6 +307,17 @@ func TestBinarySearchBasesFrom_IncludesParentOfExeDir(t *testing.T) {
 	}
 	if !slices.Contains(bases, wantParent) {
 		t.Errorf("bases = %v, want to contain parent dir %q", bases, wantParent)
+	}
+}
+
+func TestBinarySearchBasesFrom_PrefersExecutableOverWorkingDir(t *testing.T) {
+	exePath := filepath.Join("/opt/Memo", "memo-backend")
+	bases := binarySearchBasesFrom(exePath)
+	wantExeDir := filepath.Join("/opt/Memo")
+	exeIdx := slices.Index(bases, wantExeDir)
+	cwdIdx := slices.Index(bases, ".")
+	if exeIdx < 0 || cwdIdx < 0 || exeIdx >= cwdIdx {
+		t.Fatalf("bases = %v; want exeDir (%q) before working dir \".\"", bases, wantExeDir)
 	}
 }
 

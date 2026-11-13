@@ -132,12 +132,23 @@ func TestBinarySearchBasesFrom_IncludesParentOfExeDir(t *testing.T) {
 	}
 }
 
+func TestBinarySearchBasesFrom_PrefersExecutableOverWorkingDir(t *testing.T) {
+	exePath := filepath.Join("/opt/Memo", "memo-backend")
+	bases := binarySearchBasesFrom(exePath)
+	wantExeDir := filepath.Join("/opt/Memo")
+	exeIdx := slices.Index(bases, wantExeDir)
+	cwdIdx := slices.Index(bases, ".")
+	if exeIdx < 0 || cwdIdx < 0 || exeIdx >= cwdIdx {
+		t.Fatalf("bases = %v; want exeDir (%q) before working dir \".\"", bases, wantExeDir)
+	}
+}
+
 func TestBinarySearchBases(t *testing.T) {
 	bases := binarySearchBases()
 	if len(bases) == 0 {
 		t.Error("expected at least one search base")
 	}
-	if bases[0] != "." {
-		t.Errorf("expected first base to be \".\", got %q", bases[0])
+	if bases[len(bases)-1] != "." {
+		t.Errorf("expected last base to be \".\" (after executable roots), got %q in %v", bases[len(bases)-1], bases)
 	}
 }

@@ -27,3 +27,14 @@ func TestSearchRootsFrom_IncludesParentOfExeDir(t *testing.T) {
 		t.Errorf("dirs = %v, want to contain parent dir %q", dirs, wantParent)
 	}
 }
+
+func TestVecFileCandidates_DarwinPrefersArchSpecific(t *testing.T) {
+	arm := vecFileCandidates("darwin", "arm64", ".dylib")
+	if len(arm) == 0 || arm[0] != "binaries/darwin/cpu/vec0-arm64.dylib" {
+		t.Fatalf("darwin/arm64 first candidate = %v, want binaries/darwin/cpu/vec0-arm64.dylib", arm)
+	}
+	amd := vecFileCandidates("darwin", "amd64", ".dylib")
+	if len(amd) == 0 || amd[0] != "binaries/darwin/cpu/vec0-x86_64.dylib" {
+		t.Fatalf("darwin/amd64 first candidate = %v, want binaries/darwin/cpu/vec0-x86_64.dylib", amd)
+	}
+}

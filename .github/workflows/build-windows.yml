@@ -170,12 +170,6 @@ jobs:
           mkdir "%MEMO_HOME%\data\profile" 2>nul
           mkdir "%MEMO_HOME%\config" 2>nul
 
-          if not exist "%MEMO_HOME%\binaries" (
-              if exist "%APP_DIR%binaries" (
-                  mkdir "%MEMO_HOME%\binaries"
-                  xcopy /E /I /Y "%APP_DIR%binaries" "%MEMO_HOME%\binaries\" >nul
-              )
-          )
           if not exist "%MEMO_HOME%\config\config.yaml" (
               if exist "%APP_DIR%config" (
                   xcopy /E /I /Y "%APP_DIR%config" "%MEMO_HOME%\config\" >nul
@@ -212,6 +206,7 @@ jobs:
           $runner | Out-File -Encoding ASCII "build_output\stage\${{ env.APP_NAME }}\run_memo.bat"
 
           $ps1 = @'
+          $env:MEMO_LAUNCH_START_MS = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds().ToString()
           $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
           Set-Location $scriptDir
 
@@ -227,9 +222,6 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\data\profile" | Out-Null
           New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\config" | Out-Null
 
-          if (-not (Test-Path "$env:MEMO_HOME\binaries") -and (Test-Path "$scriptDir\binaries")) {
-              Copy-Item -Recurse -Force "$scriptDir\binaries" "$env:MEMO_HOME\binaries\"
-          }
           if (-not (Test-Path "$env:MEMO_HOME\config\config.yaml") -and (Test-Path "$scriptDir\config")) {
               Copy-Item -Recurse -Force "$scriptDir\config" "$env:MEMO_HOME\config\"
           }
@@ -251,15 +243,18 @@ jobs:
           # crashed both.
           $backendAlreadyRunning = $false
           try {
-              Invoke-WebRequest -Uri 'http://localhost:8090/api/status' -Method GET -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop | Out-Null
+              Invoke-WebRequest -Uri 'http://127.0.0.1:8090/api/status' -Method GET -TimeoutSec 1 -UseBasicParsing -ErrorAction Stop | Out-Null
               $backendAlreadyRunning = $true
           } catch {}
 
           $backend = $null
           if (-not $backendAlreadyRunning) {
-              try { Invoke-RestMethod -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 3 } catch {}
-              Start-Sleep -Seconds 1
-              Get-Process -Name 'memo-backend' -ErrorAction SilentlyContinue | Stop-Process -Force
+              $stale = Get-Process -Name 'memo-backend' -ErrorAction SilentlyContinue
+              if ($stale) {
+                  try { Invoke-RestMethod -Uri 'http://127.0.0.1:8090/api/shutdown' -Method POST -TimeoutSec 2 } catch {}
+                  $null = $stale | Wait-Process -Timeout 2 -ErrorAction SilentlyContinue
+                  Get-Process -Name 'memo-backend' -ErrorAction SilentlyContinue | Stop-Process -Force
+              }
 
               # --auto-shutdown ties the backend to the app window: once no window
               # is attached (the app quit, or crashed and missed its heartbeats
@@ -268,7 +263,18 @@ jobs:
               # as a service (plain `memo --headless`) never gets this flag and
               # is attached to above, never stopped.
               $backend = Start-Process -FilePath "$scriptDir\memo-backend.exe" -ArgumentList '--headless','--auto-shutdown' -WorkingDirectory $env:MEMO_HOME -WindowStyle Hidden -PassThru
-              Start-Sleep -Seconds 2
+              $deadline = [DateTime]::UtcNow.AddMilliseconds(3000)
+              while ([DateTime]::UtcNow -lt $deadline -and -not $backend.HasExited) {
+                  try {
+                      Invoke-WebRequest -Uri 'http://127.0.0.1:8090/api/status' -Method GET -TimeoutSec 1 -UseBasicParsing -ErrorAction Stop | Out-Null
+                      $env:MEMO_BACKEND_READY_MS = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds().ToString()
+                      break
+                  } catch {
+                      Start-Sleep -Milliseconds 50
+                  }
+              }
+          } else {
+              $env:MEMO_BACKEND_READY_MS = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds().ToString()
           }
 
           $flutter = Start-Process -FilePath "$scriptDir\memo_flutter.exe" -WorkingDirectory $scriptDir -PassThru

@@ -614,9 +614,9 @@ func (s *Server) CtxSize() int {
 var overrideRootFn = func() string { return components.OverrideRoot(config.DataDir()) }
 
 // resolveBinary finds the llama-server binary.
-// It searches relative to the current working directory first, then relative to
-// the running executable's location (for bundled AppImage/tar.gz deployments
-// where CWD is $HOME/.memo but binaries live next to memo-backend).
+// It searches downloaded component overrides first, then relative to the
+// running executable's directory (and its parent, for ~/.memo/bin/memo), and
+// finally relative to the current working directory (for `go run` / dev).
 //
 // A copy of an engine folder that the component updater downloaded
 // (<data>/components/binaries/<os>/<flavor>) shadows the bundled copy of the
@@ -628,12 +628,10 @@ func resolveBinary(configured string, mode string) (string, error) {
 	currentOS := runtime.GOOS
 	if mode != "" && mode != "auto" {
 		for _, base := range binarySearchBases() {
-			p := filepath.Join(base, "binaries", currentOS, mode, llamaServerBinary())
-			if _, err := os.Stat(p); err == nil {
+			if p, ok := findLlamaServerInDir(filepath.Join(base, "binaries", currentOS, mode)); ok {
 				return p, nil
 			}
-			p = filepath.Join(base, "bin", llamaServerBinary())
-			if _, err := os.Stat(p); err == nil {
+			if p, ok := findLlamaServerInDir(filepath.Join(base, "bin")); ok {
 				return p, nil
 			}
 		}
@@ -655,10 +653,9 @@ func resolveBinary(configured string, mode string) (string, error) {
 		// gpuSelector asks each build which devices it sees (see its doc).
 		var sel gpuSelector
 		for _, flavor := range flavors {
-			p := filepath.Join(base, "binaries", currentOS, flavor, llamaServerBinary())
-			if _, err := os.Stat(p); err == nil {
+			if p, ok := findLlamaServerInDir(filepath.Join(base, "binaries", currentOS, flavor)); ok {
 				// Same flavor, downloaded copy: prefer it.
-				if ov := filepath.Join(overrideRootFn(), "binaries", currentOS, flavor, llamaServerBinary()); fileExists(ov) {
+				if ov, hasOv := findLlamaServerInDir(filepath.Join(overrideRootFn(), "binaries", currentOS, flavor)); hasOv {
 					p = ov
 				}
 				// Asked which GPUs it sees (it is run), so it must be runnable first.
@@ -672,14 +669,13 @@ func resolveBinary(configured string, mode string) (string, error) {
 		if fb := sel.fallback(); fb != "" {
 			return fb, nil
 		}
-		p := filepath.Join(base, "bin", llamaServerBinary())
-		if _, err := os.Stat(p); err == nil {
+		if p, ok := findLlamaServerInDir(filepath.Join(base, "bin")); ok {
 			return p, nil
 		}
 	}
 	// Nothing bundled at all: a downloaded engine can still carry the machine.
 	for _, flavor := range flavors {
-		if ov := filepath.Join(overrideRootFn(), "binaries", currentOS, flavor, llamaServerBinary()); fileExists(ov) {
+		if ov, ok := findLlamaServerInDir(filepath.Join(overrideRootFn(), "binaries", currentOS, flavor)); ok {
 			return ov, nil
 		}
 	}
@@ -769,22 +765,25 @@ func fileExists(p string) bool {
 }
 
 // binarySearchBasesFrom is the pure part of binarySearchBases, split out so
-// it can be tested without mocking os.Executable: the current working
-// directory, the executable's own directory, and that directory's parent.
-// The parent matters for the installed CLI, whose binary lives one level
-// deeper (~/.memo/bin/memo) than the bundled "binaries/" tree it ships next
-// to (~/.memo/binaries/...) — the GUI/AppImage binary sits flush with
-// "binaries/" already, so exeDir alone covers it, but the CLI needs the
-// parent to find the very same bundle.
+// it can be tested without mocking os.Executable: the executable's own
+// directory, that directory's parent, and finally the current working
+// directory.
+//
+// Searching exeDir and its parent BEFORE "." ensures an upgraded installed
+// bundle (or ~/.memo/bin/memo) is never shadowed by a stale CWD binaries/
+// copy, while still allowing `go run` / `go test` checkouts to resolve ".".
 func binarySearchBasesFrom(exePath string) []string {
-	bases := []string{"."}
-	exeDir := filepath.Dir(exePath)
-	if exeDir != "." {
-		bases = append(bases, exeDir)
-		if parent := filepath.Dir(exeDir); parent != exeDir {
-			bases = append(bases, parent)
+	var bases []string
+	if exePath != "" {
+		exeDir := filepath.Dir(exePath)
+		if exeDir != "." {
+			bases = append(bases, exeDir)
+			if parent := filepath.Dir(exeDir); parent != exeDir && parent != "." {
+				bases = append(bases, parent)
+			}
 		}
 	}
+	bases = append(bases, ".")
 	return bases
 }
 
@@ -794,6 +793,35 @@ func llamaServerBinary() string {
 		return "llama-server.exe"
 	}
 	return "llama-server"
+}
+
+// llamaServerCandidatesFor returns binary filenames in preference order for a
+// given OS and architecture. Universal macOS bundles carry -arm64 and -x64
+// alongside a fallback llama-server, so resolving arch-specific names directly
+// removes the need to copy and rename binaries on first launch.
+func llamaServerCandidatesFor(goos, goarch string) []string {
+	if goos == "windows" {
+		return []string{"llama-server.exe"}
+	}
+	if goos == "darwin" {
+		if goarch == "arm64" {
+			return []string{"llama-server-arm64", "llama-server"}
+		}
+		if goarch == "amd64" {
+			return []string{"llama-server-x64", "llama-server"}
+		}
+	}
+	return []string{"llama-server"}
+}
+
+func findLlamaServerInDir(dir string) (string, bool) {
+	for _, name := range llamaServerCandidatesFor(runtime.GOOS, runtime.GOARCH) {
+		p := filepath.Join(dir, name)
+		if fileExists(p) {
+			return p, true
+		}
+	}
+	return "", false
 }
 
 // engineEnv is the environment a llama-server at bin runs in: the process

@@ -69,24 +69,43 @@ func findVecFile() string {
 
 	// Search paths (relative + absolute)
 	searchDirs := searchRoots()
+	candidates := vecFileCandidates(osName, runtime.GOARCH, suffix)
 
 	for _, dir := range searchDirs {
-		candidates := []string{
-			fmt.Sprintf("binaries/%s/vec0", osName),
-			fmt.Sprintf("binaries/%s/cpu/vec0", osName),
-			fmt.Sprintf("binaries/%s/vec0%s", osName, suffix),
-			fmt.Sprintf("binaries/%s/cpu/vec0%s", osName, suffix),
-		}
 		for _, rel := range candidates {
 			target := filepath.Join(dir, rel)
 			if _, err := os.Stat(target); err == nil {
-				// Use the path without .so suffix for LoadExtension
+				// Use the path without .so/.dylib/.dll suffix for LoadExtension
 				loadName := strings.TrimSuffix(target, suffix)
 				return loadName
 			}
 		}
 	}
 	return ""
+}
+
+func vecFileCandidates(osName, arch, suffix string) []string {
+	var candidates []string
+	if osName == "darwin" {
+		archName := ""
+		if arch == "arm64" {
+			archName = "vec0-arm64"
+		} else if arch == "amd64" {
+			archName = "vec0-x86_64"
+		}
+		if archName != "" {
+			candidates = append(candidates,
+				fmt.Sprintf("binaries/%s/cpu/%s%s", osName, archName, suffix),
+				fmt.Sprintf("binaries/%s/%s%s", osName, archName, suffix),
+			)
+		}
+	}
+	return append(candidates,
+		fmt.Sprintf("binaries/%s/vec0", osName),
+		fmt.Sprintf("binaries/%s/cpu/vec0", osName),
+		fmt.Sprintf("binaries/%s/vec0%s", osName, suffix),
+		fmt.Sprintf("binaries/%s/cpu/vec0%s", osName, suffix),
+	)
 }
 
 // searchRoots returns candidate base directories to search for binaries/.

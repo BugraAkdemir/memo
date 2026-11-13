@@ -101,8 +101,8 @@ func TestResolveBinary_AutoWithNothingBundledUsesADownloadedEngine(t *testing.T)
 func TestBinarySearchBases_OverrideFirstThenBundled(t *testing.T) {
 	over, _ := withOverride(t)
 	bases := binarySearchBases()
-	if len(bases) < 2 || bases[0] != over || bases[1] != "." {
-		t.Fatalf("bases = %v; want [%s . …]", bases, over)
+	if len(bases) < 2 || bases[0] != over || bases[len(bases)-1] != "." {
+		t.Fatalf("bases = %v; want [%s … .]", bases, over)
 	}
 	for _, b := range bundledSearchBases() {
 		if b == over {

@@ -11,8 +11,8 @@ moving on. No UI framework rewrite or literal single-PID migration.
 - [x] 2. Make Windows native tray results trustworthy: initialize structures,
   check image/shell errors, restore after Explorer restart, retain main-window
   ownership when a mascot window registers plugins, and verify native code in CI.
-- [ ] 3. Measure installed Windows startup stages, then normalize engine bundle
-  resolution and remove the redundant first-launch copy/readiness sleeps.
+- [x] 3. Measure installed Windows startup stages, then normalize engine bundle
+  resolution and remove the redundant first-launch copy/readiness sleeps. *(Startup timing instrumentation merged; engine resolution normalized to override -> exeDir -> parent -> cwd with macOS arch suffix selection; Windows redundant `binaries/` copy and blind startup sleeps removed. Cold/warm installed Windows capture runs on a Windows machine via `StartupTiming`.)*
 - [ ] 4. Lazy-create/cache tabs and bundle fonts; verify offline startup and
   retained screen/global notification behavior.
 - [ ] 5. Implement owned desktop sessions and graceful/bounded termination across

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:io';
 
+import '../core/calendar_reminder_bridge.dart';
 import '../core/l10n.dart';
 import '../core/platform_capabilities.dart';
 import '../core/startup_timing.dart';
@@ -85,6 +86,9 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> {
   // 0=chat 1=agent 2=models 3=calendar 4=routines 5=developer 6=swarm 7=mail
   int _currentIndex = 0;
+  // Defer building secondary tabs until first visit, then cache in IndexedStack
+  // so switching back preserves scroll/form state without paying launch cost.
+  final Set<int> _visitedTabs = {0};
   bool _showLaunchpad = false;
   bool _showTour = false;
 
@@ -416,26 +420,10 @@ class _AppShellState extends ConsumerState<AppShell> {
                           Expanded(
                             child: IndexedStack(
                               index: _currentIndex,
-                              children: [
-                                ChatScreen(key: ValueKey('chat_$locale')),
-                                // Index 1 used to be the separate Agent screen. Chats are one
-                                // list now (an agent chat is a chat with a project), so this
-                                // slot stays only to keep the other tab indices stable;
-                                // _handleTabChange sends anyone who asks for it to Chats.
-                                const SizedBox.shrink(),
-                                ModelStoreScreen(
-                                    key: ValueKey('models_$locale')),
-                                const CalendarScreen(),
-                                const RoutinesScreen(),
-                                const DeveloperScreen(),
-                                // Always present in the stack so index 6 stays
-                                // stable; the nav button is gated separately
-                                // (Beta + !macOS). IndexedStack keeps this
-                                // mounted forever — polling is started/stopped
-                                // in _handleTabChange (KNOWN_ISSUES M04).
-                                const SwarmScreen(),
-                                MailScreen(isActive: _currentIndex == 7),
-                              ],
+                              children: List<Widget>.generate(
+                                8,
+                                (i) => _buildTabChild(i, locale),
+                              ),
                             ),
                           ),
                           // Hidden on mobile — the model/memory status strip
@@ -459,6 +447,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                 // from _buildMobileNavDrawer had no way back. Replaces the
                 // per-screen menu buttons Chat/Agent used to render.
                 if (narrow) _buildMobileNavButton(),
+                if (notificationsSupported) const CalendarReminderBridge(),
                 SetupWizardOverlay(),
                 if (_showLaunchpad) _buildLaunchpadOverlay(),
                 if (_showTour) _buildTourOverlay(),
@@ -941,9 +930,40 @@ class _AppShellState extends ConsumerState<AppShell> {
     );
   }
 
+  Widget _buildTabChild(int index, MemoLocale locale) {
+    if (!_visitedTabs.contains(index)) {
+      return const SizedBox.shrink();
+    }
+    switch (index) {
+      case 0:
+        return ChatScreen(key: ValueKey('chat_$locale'));
+      // Index 1 used to be the separate Agent screen; keep slot stable.
+      case 1:
+        return const SizedBox.shrink();
+      case 2:
+        return ModelStoreScreen(key: ValueKey('models_$locale'));
+      case 3:
+        return const CalendarScreen();
+      case 4:
+        return const RoutinesScreen();
+      case 5:
+        return const DeveloperScreen();
+      // Polling is started/stopped in _handleTabChange (KNOWN_ISSUES M04).
+      case 6:
+        return const SwarmScreen();
+      case 7:
+        return MailScreen(isActive: _currentIndex == 7);
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
   void _handleTabChange(int index) {
     if (index == 1) index = 0; // the Agent tab is gone: agent chats live in Chats
-    setState(() => _currentIndex = index);
+    setState(() {
+      _visitedTabs.add(index);
+      _currentIndex = index;
+    });
     ref.read(activeTabProvider.notifier).state = index;
     // WhatsApp status polling is no longer driven from here — it moved
     // into Settings > WhatsApp's own init/dispose lifecycle (see

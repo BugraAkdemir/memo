@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/l10n.dart';
@@ -26,6 +27,7 @@ void main(List<String> args) async {
 
   StartupTiming.instance.mark('dart_main');
   WidgetsFlutterBinding.ensureInitialized();
+  GoogleFonts.config.allowRuntimeFetching = false;
   StartupTiming.instance.mark('binding_initialized');
 
   // A ConsumerStatefulWidget's Element can go defunct (torn down mid-

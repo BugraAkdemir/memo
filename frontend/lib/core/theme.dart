@@ -220,6 +220,9 @@ class MemoTheme {
   // Schibsted Grotesk for display/headline/title (characterful, premium,
   // strong numerals for the download %); Inter for body/label legibility.
   static TextTheme _buildTextTheme(ThemeColors c) {
+    // Fonts are bundled in assets/fonts/ so desktop and offline launches never
+    // stall on or require HTTP fetches to fonts.gstatic.com.
+    GoogleFonts.config.allowRuntimeFetching = false;
     final base = ThemeData(
       brightness: c.isGlass ? Brightness.light : Brightness.dark,
     ).textTheme;

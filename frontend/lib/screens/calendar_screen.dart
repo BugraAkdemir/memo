@@ -1,11 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/calendar_reminder_bridge.dart';
 import '../core/notification_service.dart';
-import '../core/calendar_reminders.dart';
 import '../core/platform_capabilities.dart';
 import '../core/theme.dart';
 import '../core/l10n.dart';
@@ -86,40 +85,27 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   bool _loading = true;
   String? _error;
   Timer? _refreshTimer;
-  AppLifecycleListener? _lifecycleListener;
+  CalendarReminderSync? _reminderSync;
 
   @override
   void initState() {
     super.initState();
-    // A phone that has been closed for days comes back with alarms that may
-    // no longer match the calendar. Cheaper than any poller: one reload when
-    // the app is actually brought back, nothing while it sleeps.
-    if (notificationsSupported) {
-      _lifecycleListener = AppLifecycleListener(
-        onResume: () {
-          // Drop the fingerprint so the reload genuinely re-arms rather than
-          // deciding nothing changed: the point of the resume hook is a phone
-          // that has been closed long enough for its alarms to be in doubt.
-          _calendarForeground = true;
-          _reminders.invalidate();
-          _startChangeStream();
-          _load(silent: true);
+    // Standalone CalendarScreen mounts (e.g. widget tests without AppShell)
+    // manage their own mobile reminder stream/reconciler; inside AppShell,
+    // CalendarReminderBridge already keeps one active for the whole session.
+    if (notificationsSupported && !CalendarReminderBridge.isActive) {
+      _reminderSync = CalendarReminderSync(
+        readApi: () => ref.read(apiClientProvider),
+        isAuthBlocked: () => authGateBlocked(ref.read(authGateProvider).valueOrNull),
+        isMounted: () => mounted,
+        onRemoteChange: () {
+          if (mounted) _load(silent: true);
         },
-        onPause: () {
-          _calendarForeground = false;
-          _stopChangeStream();
-          _reminderRetry?.cancel();
-        },
-        onHide: () {
-          _calendarForeground = false;
-          _stopChangeStream();
-          _reminderRetry?.cancel();
-        },
-      );
+      )..attachLifecycle();
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _load();
-      _startChangeStream();
+      _reminderSync?.startChangeStream();
       // Start timer only if calendar tab is already active, then keep it
       // in sync with tab switches via ref.listen below.
       if (ref.read(activeTabProvider) == calendarTabIndex) _startRefreshTimer();
@@ -129,9 +115,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
-    _lifecycleListener?.dispose();
-    _stopChangeStream();
-    _reminderRetry?.cancel();
+    _reminderSync?.dispose();
     super.dispose();
   }
 
@@ -182,88 +166,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     }
   }
 
-  final _reminders = CalendarReminderReconciler(
-    pending: NotificationService.pendingReminders,
-    cancel: NotificationService.cancelReminder,
-    schedule: (event, lead) => NotificationService.scheduleReminder(
-      eventId: event.id, title: event.title,
-      whenUtc: NotificationService.fireTimeUtc(startUtc: event.startUtc, leadMinutes: lead),
-      minutesBefore: lead,
-    ),
-  );
-  bool _calendarForeground = true;
-  bool _syncingReminders = false;
-  bool _syncRequested = false;
-  StreamSubscription<void>? _changeSubscription;
-  CancelToken? _changeCancel;
-  Timer? _changeRetry;
-  Timer? _reminderRetry;
-  int _changeGeneration = 0;
-
-  void _stopChangeStream() {
-    _changeGeneration++;
-    _changeRetry?.cancel();
-    _changeCancel?.cancel();
-    _changeCancel = null;
-    _changeSubscription?.cancel();
-    _changeSubscription = null;
-  }
-
-  void _startChangeStream() {
-    if (!notificationsSupported || !mounted || !_calendarForeground ||
-        authGateBlocked(ref.read(authGateProvider).valueOrNull)) { return; }
-    _stopChangeStream();
-    final generation = _changeGeneration;
-    final cancel = CancelToken();
-    _changeCancel = cancel;
-    bool retryAllowed = true;
-    void retry() {
-      if (!mounted || !_calendarForeground || generation != _changeGeneration) return;
-      _changeRetry?.cancel();
-      _changeRetry = Timer(const Duration(seconds: 5), _startChangeStream);
-    }
-    _changeSubscription = ref.read(apiClientProvider).calendarChangeStream(cancelToken: cancel).listen(
-      (_) { if (mounted && generation == _changeGeneration) _load(silent: true); },
-      onError: (Object error) {
-        if (error is DioException &&
-            (CancelToken.isCancel(error) || [401, 403, 404, 501].contains(error.response?.statusCode))) {
-          retryAllowed = false;
-          return;
-        }
-        debugPrint('calendar: change stream: $error'); retry();
-      },
-      onDone: () { if (retryAllowed) retry(); },
-    );
-  }
-
   Future<void> _syncReminders() async {
-    if (!notificationsSupported || !NotificationService.initialized || !mounted ||
-        !_calendarForeground || authGateBlocked(ref.read(authGateProvider).valueOrNull)) { return; }
-    _syncRequested = true;
-    if (_syncingReminders) return;
-    _syncingReminders = true;
-    try {
-      do {
-        _syncRequested = false;
-        final api = ref.read(apiClientProvider);
-        // Full upcoming snapshot: changing the viewed month must not cancel
-        // alarms for another month, or miss an out-of-band addition.
-        final now = DateTime.now().toUtc();
-        final raw = await api.getCalendarEvents(from: now, to: DateTime.utc(9999));
-        final settings = await api.getCalendarSettings();
-        if (!mounted || !_calendarForeground) return;
-        final lead = (settings['reminder_lead_minutes'] as num?)?.toInt() ?? 30;
-        final events = raw.map(CalendarReminder.fromJson).whereType<CalendarReminder>().toList();
-        await _reminders.sync(events, lead, now);
-      } while (_syncRequested && mounted && _calendarForeground);
-    } catch (e) {
-      debugPrint('calendar: reminder reconciliation failed: $e');
-      if (mounted && _calendarForeground) {
-        _reminderRetry?.cancel();
-        _reminderRetry = Timer(const Duration(seconds: 10), _syncReminders);
-      }
-    } finally {
-      _syncingReminders = false;
+    if (_reminderSync != null) {
+      await _reminderSync!.syncNow();
+    } else if (notificationsSupported) {
+      CalendarReminderBridge.requestSync();
     }
   }
 
@@ -331,15 +238,21 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     // BUG-ONB11: loads the events initState deliberately skipped while the
     // gate was up, without making the user open the tab first.
     ref.listen<AsyncValue<AuthGateInfo>>(authGateProvider, (prev, next) {
-      if (authGateBlocked(prev?.valueOrNull) &&
-          !authGateBlocked(next.valueOrNull)) {
-        _startChangeStream();
+      final wasBlocked = authGateBlocked(prev?.valueOrNull);
+      final isBlocked = authGateBlocked(next.valueOrNull);
+      _reminderSync?.handleAuthTransition(
+        wasBlocked: wasBlocked,
+        isBlocked: isBlocked,
+      );
+      if (wasBlocked && !isBlocked) {
         _load();
-      } else if (authGateBlocked(next.valueOrNull)) {
-        _stopChangeStream();
-        _reminderRetry?.cancel();
       }
     });
+    if (notificationsSupported && CalendarReminderBridge.isActive) {
+      ref.listen<int>(calendarRevisionProvider, (_, _) {
+        if (mounted) _load(silent: true);
+      });
+    }
     final c = MemoTheme.of(context);
 
     return Scaffold(

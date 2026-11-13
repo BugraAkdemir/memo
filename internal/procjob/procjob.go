@@ -1,21 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package procjob makes the engines Memo starts (llama-server, the embedding
-// server, whisper-server, the Subscriptions sidecar) end when the backend
-// ends — however it ends.
+// Package procjob binds the lifetime of Memo's desktop UI, owned backend, and
+// local engines (llama-server, the embedding server, whisper-server, the
+// Subscriptions sidecar) to the Memo session owner while ensuring detached
+// external launches (memo-updater, open_app, browseropen) survive exit.
 //
-// On Windows a child process does not die with its parent: a backend that was
-// force-killed (Task Manager, Stop-Process -Force, a crash) left every engine
-// running with nothing to stop it, holding RAM, VRAM and ports. Bind puts an
-// engine into one Job Object of the backend created with
-// JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE; the job handle is never closed by Memo,
-// so the OS closes it when the backend process exits, and that kills every
-// process still in the job.
+// On Windows a child process does not die with its parent unless contained in a
+// Job Object created with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE. EnsureSelf puts
+// the desktop-session owner (or standalone backend) into a Job Object configured
+// with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_BREAKAWAY_OK so
+// every managed child inherits containment automatically at CreateProcess time
+// while DetachedAttr allows external apps and the updater to break away.
+// Bind additionally binds individually spawned engine processes.
 //
-// Only engines are bound, never the backend itself: anything the backend
-// starts that must outlive it (memo-updater swapping in a new release, an
-// application opened with open_app) would otherwise die with it.
-//
-// On other systems Bind does nothing (Linux/macOS stop engines through their
-// own process-group handling).
+// On Unix systems ManagedAttr / UIAttr isolate owned children in dedicated
+// process groups killed with KillProcessTree on hung teardown, while
+// WatchOwnerPipe delivers instant EOF notification whenever the desktop owner
+// exits or is killed (even via SIGKILL).
 package procjob

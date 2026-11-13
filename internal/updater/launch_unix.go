@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"syscall"
 	"time"
+
+	"memo/internal/procjob"
 )
 
 // StartDetached runs script (Memo's launcher) in its own session, so it
@@ -34,7 +36,7 @@ func StartDetachedArgs(script string, args []string, dir string, env []string, o
 		cmd.Stdout = out
 		cmd.Stderr = out
 	}
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.SysProcAttr = procjob.DetachedAttr()
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("updater: starting %s: %w", script, err)
 	}

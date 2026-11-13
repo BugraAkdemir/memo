@@ -11,8 +11,9 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
+
+	"memo/internal/procjob"
 )
 
 // launchSettle is how long startDetached watches a freshly started app for
@@ -42,7 +43,7 @@ func startDetached(argv []string) error {
 		return err
 	}
 	cmd := exec.Command(path, argv[1:]...)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	cmd.SysProcAttr = procjob.DetachedAttr()
 	if home, err := os.UserHomeDir(); err == nil {
 		cmd.Dir = home
 	}

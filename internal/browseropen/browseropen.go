@@ -10,11 +10,15 @@ package browseropen
 import (
 	"os/exec"
 	"runtime"
+
+	"memo/internal/procjob"
 )
 
 // OpenURL opens u in the user's default browser.
 func OpenURL(u string) error {
-	return browserCommand(runtime.GOOS, u).Start()
+	cmd := browserCommand(runtime.GOOS, u)
+	cmd.SysProcAttr = procjob.DetachedAttr()
+	return cmd.Start()
 }
 
 // browserCommand builds (without starting) the platform-specific command

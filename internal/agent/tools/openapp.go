@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"memo/internal/browseropen"
+	"memo/internal/procjob"
 )
 
 // openAppTimeout bounds the macOS/Windows launcher commands (`open`,
@@ -108,6 +109,7 @@ func OpenApp(ctx context.Context, argsJSON json.RawMessage, _ string, _ func(str
 	execCtx, cancel := context.WithTimeout(ctx, openAppTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(execCtx, name, cmdArgs...)
+	cmd.SysProcAttr = procjob.DetachedAttr()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if execCtx.Err() == context.DeadlineExceeded {

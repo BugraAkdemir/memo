@@ -129,6 +129,7 @@ jobs:
           # step needed, it's already in the checkout.
           mkdir -p "$S/binaries"
           cp -r binaries/darwin "$S/binaries/darwin"
+          find "$S/binaries/darwin" -type f \( -name "llama-server*" -o -name "whisper*" -o -name "cli-proxy-api*" -o -name "*.dylib*" \) -exec chmod +x {} \; 2>/dev/null || true
           cp config/config.yaml.example "$S/config/config.yaml" 2>/dev/null || true
           cp config/config.yaml.example "$S/config/config.yaml.example" 2>/dev/null || true
           cp .env.example "$S/.env" 2>/dev/null || true
@@ -147,20 +148,8 @@ jobs:
           export MEMO_DATA_DIR="$MEMO_HOME/data"
           mkdir -p "$MEMO_HOME"/{config,data/{models,memory,sessions,agent-backups,skills,whatsapp,profile,bin}}
 
-          if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ]; then
-              echo "📦 İlk çalıştırma: engine binary'leri kopyalanıyor..."
-              cp -r "$DIR/binaries" "$MEMO_HOME/binaries/"
-
-              ARCH=$(uname -m)
-              BIN_DIR="$MEMO_HOME/binaries/darwin/cpu"
-              if [ "$ARCH" = "arm64" ] && [ -f "$BIN_DIR/llama-server-arm64" ]; then
-                  cp "$BIN_DIR/llama-server-arm64" "$BIN_DIR/llama-server"
-                  cp "$BIN_DIR/vec0-arm64.dylib" "$BIN_DIR/vec0.dylib"
-              elif [ "$ARCH" = "x86_64" ] && [ -f "$BIN_DIR/llama-server-x64" ]; then
-                  cp "$BIN_DIR/llama-server-x64" "$BIN_DIR/llama-server"
-                  cp "$BIN_DIR/vec0-x86_64.dylib" "$BIN_DIR/vec0.dylib"
-              fi
-              chmod +x "$BIN_DIR/llama-server" 2>/dev/null || true
+          if [ -d "$DIR/binaries/darwin" ]; then
+              find "$DIR/binaries/darwin" -type f \( -name "llama-server*" -o -name "whisper*" -o -name "cli-proxy-api*" -o -name "*.dylib*" \) -exec chmod +x {} \; 2>/dev/null || true
           fi
           [ ! -f "$MEMO_HOME/config/config.yaml" ] && [ -f "$DIR/config/config.yaml" ] && cp "$DIR/config/config.yaml" "$MEMO_HOME/config/"
           [ ! -f "$MEMO_HOME/data/providers.json" ] && [ -f "$DIR/data/providers.example.json" ] && cp "$DIR/data/providers.example.json" "$MEMO_HOME/data/providers.json"
@@ -168,29 +157,9 @@ jobs:
           [ ! -f "$MEMO_HOME/data/permissions.json" ] && echo '[]' > "$MEMO_HOME/data/permissions.json"
 
           cd "$MEMO_HOME"
-          export DYLD_LIBRARY_PATH="$MEMO_HOME/data/bin:$MEMO_HOME.app/Contents/Frameworks:$DYLD_LIBRARY_PATH"
+          export DYLD_LIBRARY_PATH="$DIR/${{ env.APP_NAME }}.app/Contents/Frameworks:$MEMO_HOME/data/bin:$DYLD_LIBRARY_PATH"
 
-          # Check if a backend is already running (e.g. started via the
-          # `memo` terminal CLI) - attach to it instead of killing it and
-          # starting a second one, which caused a port-bind conflict and
-          # crashed both.
-          BACKEND_ALREADY_RUNNING=false
-          if curl -s -o /dev/null --max-time 2 "http://localhost:8090/api/status"; then
-              BACKEND_ALREADY_RUNNING=true
-              echo "Zaten çalışan bir Memo backend'i bulundu, ona bağlanılıyor."
-          fi
-
-          if [ "$BACKEND_ALREADY_RUNNING" = false ]; then
-              pkill -9 -f "memo-backend" 2>/dev/null || true
-              pkill -9 -f "llama-server" 2>/dev/null || true
-              sleep 0.5
-              "$DIR/memo-backend" > "$MEMO_HOME/backend.log" 2>&1 &
-              sleep 1
-          fi
-          "$DIR/${{ env.APP_NAME }}.app/Contents/MacOS/${{ env.APP_NAME }}" "$@"
-          if [ "$BACKEND_ALREADY_RUNNING" = false ]; then
-              curl -s -X POST "http://localhost:8090/api/shutdown" --max-time 5 >/dev/null 2>&1 || true
-          fi
+          exec "$DIR/memo-backend" --desktop-session --port 8090 --ui "$DIR/${{ env.APP_NAME }}.app/Contents/MacOS/${{ env.APP_NAME }}" -- "$@"
           EOF
           chmod +x "$S/run_memo.command"
           xattr -dr com.apple.quarantine "$S/${{ env.APP_NAME }}.app" 2>/dev/null || true

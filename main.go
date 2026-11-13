@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	"memo/internal/app"
 	"memo/internal/config"
 	"memo/internal/logx"
+	"memo/internal/procjob"
 	"memo/internal/replcli"
 	"memo/internal/shutdown"
 )
@@ -59,6 +61,9 @@ func main() {
 	port := flag.Int("port", 8090, "Backend REST API port — used both for a standalone --headless server and for the backend an interactive terminal session talks to")
 	headless := flag.Bool("headless", false, "Force headless mode (no terminal REPL) even from an interactive terminal")
 	autoShutdown := flag.Bool("auto-shutdown", false, "internal: set by memo itself when it spawns a detached backend for a terminal session — shuts down once no CLI/GUI client is attached (see internal/app/clients.go). Do not set this for a standalone/service backend.")
+	desktopSession := flag.Bool("desktop-session", false, "internal: supervise desktop UI + owned headless backend cleanly across platforms")
+	owned := flag.Bool("owned", false, "internal: bind headless backend lifetime to parent desktop-session stdin control pipe")
+	uiPath := flag.String("ui", "", "Path to desktop UI executable for --desktop-session")
 	prompt := flag.String("p", "", "Send a single message non-interactively, print the reply plus [chat:<id>] and a [memory:...] status line, then exit — no terminal REPL. Scripting/testing only, mirrors what the interactive REPL does for one turn.")
 	chatID := flag.String("chat", "", "Existing chat ID to continue with -p (see [chat:<id>] from a previous -p run), or to target with -list/-memory. Omitted with -p: starts a brand-new agent chat, same as an interactive session would. -list/-memory require -chat — there is no bare, chat-less form of either.")
 	autoAllow := flag.Bool("auto-allow", false, "With -p: automatically allow any tool permission request instead of denying it, so a scripted turn can actually run agent tools (file edit, command, web search) instead of being blocked. DANGEROUS outside a disposable test environment — the agent gets to act on the filesystem/shell with zero human review.")
@@ -169,6 +174,10 @@ func main() {
 		return
 	}
 
+	if *desktopSession {
+		os.Exit(runDesktopSessionMain(*port, *uiPath, flag.Args()))
+	}
+
 	interactive := !*headless && isInteractive()
 
 	// The backend logs heavily (slog via logx, plus the stdlib `log` calls in
@@ -200,6 +209,7 @@ func main() {
 	statusCancel()
 
 	if !interactive {
+		var ownerGone atomic.Bool
 		// Headless: this process itself is the backend — either a
 		// standalone service (plain --headless, e.g. for remote access or
 		// a persistent WhatsApp bridge) or the detached child a terminal
@@ -207,6 +217,13 @@ func main() {
 		// Only start it if one isn't already listening on this port — lets
 		// a second invocation attach instead of failing to bind.
 		if !alreadyRunning {
+			if *owned {
+				procjob.WatchOwnerPipe(os.Stdin, func() {
+					ownerGone.Store(true)
+					shutdown.Request()
+				})
+			}
+
 			a.Startup(ctx)
 			if *autoShutdown {
 				a.EnableAutoShutdown()
@@ -309,7 +326,7 @@ func main() {
 			// this signal actually arriving. Re-check before committing —
 			// an external kill/Ctrl+C when no client is attached still goes
 			// through immediately, same as before.
-			if *autoShutdown && a.HasActiveClients() {
+			if shouldIgnoreAutoShutdown(*autoShutdown, ownerGone.Load(), a.HasActiveClients()) {
 				logx.Printf("ignoring stale auto-shutdown signal — a client is attached")
 				continue
 			}
@@ -617,4 +634,76 @@ func waitForBackend(client *replcli.Client, timeout time.Duration) bool {
 		time.Sleep(100 * time.Millisecond)
 	}
 	return false
+}
+
+// shouldIgnoreAutoShutdown returns true only when an unowned auto-shutdown
+// backend receives a stale idle-shutdown trigger while an active client is
+// still attached. An owned desktop backend shuts down immediately on owner pipe
+// EOF rather than waiting for client TTL expiry.
+func shouldIgnoreAutoShutdown(autoShutdown, ownerGone, hasClients bool) bool {
+	return autoShutdown && !ownerGone && hasClients
+}
+
+func runDesktopSessionMain(port int, uiPath string, uiArgs []string) int {
+	uiPath = strings.TrimSpace(uiPath)
+	if uiPath == "" {
+		fmt.Fprintln(os.Stderr, "FATAL: --desktop-session requires --ui <path>")
+		return 1
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: resolve backend executable: %v\n", err)
+		return 1
+	}
+
+	var logOut io.Writer = io.Discard
+	_ = os.MkdirAll(config.DataDir(), 0755)
+	if logFile, lErr := os.OpenFile(config.DataPath("backend.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); lErr == nil {
+		defer logFile.Close()
+		logOut = logFile
+	}
+
+	launchMs := strings.TrimSpace(os.Getenv("MEMO_LAUNCH_START_MS"))
+	if launchMs == "" {
+		launchMs = strconv.FormatInt(time.Now().UnixMilli(), 10)
+	}
+	uiEnv := []string{
+		"MEMO_LAUNCH_START_MS=" + launchMs,
+		"MEMO_BACKEND_READY_MS=" + launchMs,
+	}
+
+	sigs := []os.Signal{os.Interrupt}
+	if runtime.GOOS != "windows" {
+		sigs = append(sigs, syscall.SIGTERM, syscall.SIGHUP)
+	}
+	sigCtx, stopSig := signal.NotifyContext(context.Background(), sigs...)
+	defer stopSig()
+
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+	client := replcli.NewClient(baseURL)
+
+	code, err := procjob.RunDesktopSession(sigCtx, procjob.DesktopSessionConfig{
+		UIPath:      uiPath,
+		UIArgs:      uiArgs,
+		UIEnv:       uiEnv,
+		BackendPath: exe,
+		BackendArgs: []string{"--headless", "--port", strconv.Itoa(port), "--auto-shutdown", "--owned"},
+		ProbeHealthy: func(pCtx context.Context) bool {
+			return client.Status(pCtx) == nil
+		},
+		ReadyTimeout:    15 * time.Second,
+		GracefulTimeout: 18 * time.Second,
+		LogOut:          logOut,
+		OnBackendReady: func() {
+			uiEnv[1] = "MEMO_BACKEND_READY_MS=" + strconv.FormatInt(time.Now().UnixMilli(), 10)
+		},
+	})
+	if err != nil {
+		_, _ = fmt.Fprintf(logOut, "desktop-session error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
+		if code == 0 {
+			return 1
+		}
+	}
+	return code
 }

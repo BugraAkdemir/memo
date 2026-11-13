@@ -47,3 +47,34 @@ func buildTestBinary(t *testing.T) string {
 	}
 	return bin
 }
+
+func TestShouldIgnoreAutoShutdown(t *testing.T) {
+	if !shouldIgnoreAutoShutdown(true, false, true) {
+		t.Fatal("unowned auto-shutdown with active client should be ignored")
+	}
+	if shouldIgnoreAutoShutdown(true, true, true) {
+		t.Fatal("owned backend must NOT ignore shutdown when owner pipe closes even while client entry is still warm")
+	}
+	if shouldIgnoreAutoShutdown(true, false, false) {
+		t.Fatal("auto-shutdown with zero clients should proceed")
+	}
+	if shouldIgnoreAutoShutdown(false, false, true) {
+		t.Fatal("manual/standalone shutdown must never be ignored")
+	}
+}
+
+func TestDesktopSessionMissingUIExitsCleanly(t *testing.T) {
+	bin := buildTestBinary(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, bin, "--desktop-session", "--port", "18198")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected non-zero exit when --ui is missing; output=%s", out)
+	}
+	if !strings.Contains(string(out), "--ui") {
+		t.Errorf("output = %q, want missing --ui message", out)
+	}
+}

@@ -202,53 +202,7 @@ cd "$MEMO_HOME"
 # Set library paths
 export LD_LIBRARY_PATH="$MEMO_HOME/data/bin:$DIR/lib:$LD_LIBRARY_PATH"
 
-# Graceful shutdown helper: SIGTERM → wait → SIGKILL
-_graceful_kill() {
-    local pattern="$1"
-    pkill -TERM -f "$pattern" 2>/dev/null || true
-    local i=0
-    while pgrep -f "$pattern" >/dev/null 2>&1 && [ $i -lt 5 ]; do
-        sleep 1; i=$((i+1))
-    done
-    pkill -9 -f "$pattern" 2>/dev/null || true
-}
-
-# Check if a backend is already running — e.g. started via the `memo`
-# terminal CLI. Attach to it instead of killing it and starting a second
-# one, which caused a port-bind conflict and crashed both.
-BACKEND_ALREADY_RUNNING=false
-if curl -s -o /dev/null --max-time 2 "http://localhost:8090/api/status"; then
-    BACKEND_ALREADY_RUNNING=true
-    echo "ℹ Zaten çalışan bir Memo backend'i bulundu, ona bağlanılıyor."
-fi
-
-BACKEND_PID=""
-if [ "$BACKEND_ALREADY_RUNNING" = false ]; then
-    # Stop stale processes
-    _graceful_kill "memo-backend"
-    _graceful_kill "llama-server"
-
-    # Start backend from writable directory
-    "$DIR/memo-backend" > "$MEMO_HOME/backend.log" 2>&1 &
-    BACKEND_PID=$!
-    sleep 1
-fi
-
-# Start Flutter frontend
-"$DIR/memo_flutter" "$@"
-
-# Cleanup — only stop the backend if THIS script started it. If we attached
-# to an already-running instance (e.g. the terminal CLI), leave it alone.
-if [ -n "$BACKEND_PID" ] && kill -0 "$BACKEND_PID" 2>/dev/null; then
-    curl -s -X POST "http://localhost:8090/api/shutdown" --max-time 5 >/dev/null 2>&1 || true
-    sleep 3
-    kill -TERM "$BACKEND_PID" 2>/dev/null || true
-    sleep 2
-    kill -9 "$BACKEND_PID" 2>/dev/null || true
-fi
-if [ "$BACKEND_ALREADY_RUNNING" = false ]; then
-    _graceful_kill "llama-server"
-fi
+exec "$DIR/memo-backend" --desktop-session --port 8090 --ui "$DIR/memo_flutter" -- "$@"
 RUNNER
 
     chmod +x "$STAGEDIR/run_memo.sh"
@@ -423,44 +377,8 @@ if not exist "%MEMO_HOME%\data\providers.json" (
     )
 )
 
-REM Check if a backend is already running (e.g. started via the `memo`
-REM terminal CLI) - attach to it instead of killing it and starting a
-REM second one, which caused a port-bind conflict and crashed both.
-set "BACKEND_ALREADY_RUNNING="
-powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8090/api/status' -Method GET -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop | Out-Null; exit 0 } catch { exit 1 }" >nul 2>&1
-if %ERRORLEVEL% EQU 0 (
-    set "BACKEND_ALREADY_RUNNING=1"
-    echo Zaten calisan bir Memo backend'i bulundu, ona baglaniliyor.
-)
-
-set "BACKEND_PID="
-if not defined BACKEND_ALREADY_RUNNING (
-    REM Only clean stale instances if memo-backend.exe is actually lingering.
-    tasklist /FI "IMAGENAME eq memo-backend.exe" 2>nul | find /I "memo-backend.exe" >nul
-    if %ERRORLEVEL% EQU 0 (
-        powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 2 -ErrorAction Stop } catch {}" >nul 2>&1
-        taskkill /F /IM memo-backend.exe >nul 2>&1
-        taskkill /F /IM llama-server.exe >nul 2>&1
-    )
-
-    REM Start backend, capture PID for targeted cleanup, and poll readiness.
-    for /f %%i in ('powershell -NoProfile -Command "& { $p = Start-Process -FilePath '%APP_DIR%memo-backend.exe' -ArgumentList '--headless','--auto-shutdown' -WorkingDirectory '%MEMO_HOME%' -PassThru; $deadline = [DateTime]::UtcNow.AddMilliseconds(3000); while ([DateTime]::UtcNow -lt $deadline -and -not $p.HasExited) { try { Invoke-WebRequest -Uri 'http://127.0.0.1:8090/api/status' -Method GET -TimeoutSec 1 -UseBasicParsing -ErrorAction Stop | Out-Null; break } catch { Start-Sleep -Milliseconds 50 } }; $p.Id }"') do set BACKEND_PID=%%i
-)
-
-REM Start Flutter frontend (blocks until closed)
-start "" /WAIT "%APP_DIR%memo_flutter.exe"
-
-REM Cleanup — only stop the backend if THIS script started it. If we
-REM attached to an already-running instance (e.g. the terminal CLI),
-REM leave it alone.
-if defined BACKEND_PID (
-    powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 5 -ErrorAction Stop } catch {}" >nul 2>&1
-    timeout /t 3 /nobreak >nul
-    taskkill /F /PID %BACKEND_PID% >nul 2>&1
-)
-if not defined BACKEND_ALREADY_RUNNING (
-    taskkill /F /IM llama-server.exe >nul 2>&1
-)
+"%APP_DIR%memo-backend.exe" --desktop-session --port 8090 --ui "%APP_DIR%memo_flutter.exe" -- %*
+endlocal
 RUNNERWIN
 
     echo "📦 4. Windows ZIP Paketi Oluşturuluyor..."
@@ -523,14 +441,9 @@ export MEMO_DATA_DIR="$MEMO_HOME/data"
 mkdir -p "$MEMO_HOME/data/"{models,memory,sessions,agent-backups,skills,whatsapp}
 mkdir -p "$MEMO_HOME/data/bin"
 
-# First-run: copy binaries
-if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ]; then
-    echo "📦 İlk çalıştırma: engine binary'leri kopyalanıyor..."
-    mkdir -p "$MEMO_HOME/binaries"
-    cp -r "$DIR/binaries/"* "$MEMO_HOME/binaries/"
-    # Archives don't reliably preserve the execute bit — force it.
-    find "$MEMO_HOME/binaries" -name "llama-server*" -exec chmod +x {} \;
-    find "$MEMO_HOME/binaries" -name "*.so*" -exec chmod +x {} \;
+# Ensure engine binaries under bundle are executable if archive omitted +x
+if [ -d "$DIR/binaries/darwin" ]; then
+    find "$DIR/binaries/darwin" -type f \( -name "llama-server*" -o -name "whisper*" -o -name "cli-proxy-api*" -o -name "*.dylib*" \) -exec chmod +x {} \; 2>/dev/null || true
 fi
 
 # First-run: copy configs
@@ -544,52 +457,9 @@ fi
 [ ! -f "$MEMO_HOME/data/permissions.json" ] && echo '[]' > "$MEMO_HOME/data/permissions.json"
 
 cd "$MEMO_HOME"
+export DYLD_LIBRARY_PATH="$DIR/Memo.app/Contents/Frameworks:$MEMO_HOME/data/bin:$DYLD_LIBRARY_PATH"
 
-# Graceful shutdown helper
-_graceful_kill() {
-    local pattern="$1"
-    pkill -TERM -f "$pattern" 2>/dev/null || true
-    local i=0
-    while pgrep -f "$pattern" >/dev/null 2>&1 && [ $i -lt 5 ]; do
-        sleep 1; i=$((i+1))
-    done
-    pkill -9 -f "$pattern" 2>/dev/null || true
-}
-
-# Check if a backend is already running (e.g. started via the `memo`
-# terminal CLI) — attach to it instead of killing it and starting a second
-# one, which caused a port-bind conflict and crashed both.
-BACKEND_ALREADY_RUNNING=false
-if curl -s -o /dev/null --max-time 2 "http://localhost:8090/api/status"; then
-    BACKEND_ALREADY_RUNNING=true
-    echo "ℹ Zaten çalışan bir Memo backend'i bulundu, ona bağlanılıyor."
-fi
-
-BACKEND_PID=""
-if [ "$BACKEND_ALREADY_RUNNING" = false ]; then
-    _graceful_kill "memo-backend"
-    _graceful_kill "llama-server"
-
-    # Start backend
-    "$DIR/memo-backend" > "$MEMO_HOME/backend.log" 2>&1 &
-    BACKEND_PID=$!
-    sleep 1
-fi
-
-# Launch Flutter .app (run binary directly so the shell waits)
-"$DIR/Memo.app/Contents/MacOS/memo_flutter" "$@"
-
-# Cleanup — only stop the backend if THIS script started it.
-if [ -n "$BACKEND_PID" ] && kill -0 "$BACKEND_PID" 2>/dev/null; then
-    curl -s -X POST "http://localhost:8090/api/shutdown" --max-time 5 >/dev/null 2>&1 || true
-    sleep 3
-    kill -TERM "$BACKEND_PID" 2>/dev/null || true
-    sleep 2
-    kill -9 "$BACKEND_PID" 2>/dev/null || true
-fi
-if [ "$BACKEND_ALREADY_RUNNING" = false ]; then
-    _graceful_kill "llama-server"
-fi
+exec "$DIR/memo-backend" --desktop-session --port 8090 --ui "$DIR/Memo.app/Contents/MacOS/memo_flutter" -- "$@"
 RUNNER_MAC
 
     chmod +x "$STAGEDIR/run_memo.sh"

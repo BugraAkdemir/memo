@@ -185,22 +185,11 @@ jobs:
 
           set "PATH=%APP_DIR%binaries\windows;%APP_DIR%binaries\windows\cpu;%APP_DIR%binaries\windows\nvidia;%APP_DIR%binaries\windows\amd;%MEMO_HOME%\data\bin;%PATH%"
 
-          REM Check if a backend is already running (e.g. started via the
-          REM `memo` terminal CLI) - attach to it instead of killing it and
-          REM starting a second one, which caused a port-bind conflict.
-          set "BACKEND_ALREADY_RUNNING="
-          powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8090/api/status' -Method GET -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop | Out-Null; exit 0 } catch { exit 1 }" >nul 2>&1
-          if %ERRORLEVEL% EQU 0 set "BACKEND_ALREADY_RUNNING=1"
-
-          REM --auto-shutdown: the backend closes itself and every engine it
-          REM started once no app window is attached (see launch.ps1).
-          if not defined BACKEND_ALREADY_RUNNING (
-              start "" /B "%APP_DIR%memo-backend.exe" --headless --auto-shutdown
-          )
-          start "" /WAIT "%APP_DIR%memo_flutter.exe"
-          if not defined BACKEND_ALREADY_RUNNING (
-              powershell -NoProfile -Command "try { Invoke-RestMethod -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 5 | Out-Null } catch {}; $p = Get-Process -Name 'memo-backend' -ErrorAction SilentlyContinue | Select-Object -First 1; if ($p -and -not $p.WaitForExit(120000)) { $p | Stop-Process -Force; Get-Process -Name 'llama-server','cli-proxy-api','whisper-server' -ErrorAction SilentlyContinue | Stop-Process -Force }" >nul 2>&1
-          )
+          REM --desktop-session attaches if a shared CLI/headless backend is
+          REM already running; otherwise it supervises an owned backend + UI
+          REM inside a single breakaway-enabled Job Object and tears down on
+          REM pipe EOF without blind sleeps or global taskkill.
+          "%APP_DIR%memo-backend.exe" --desktop-session --port 8090 --ui "%APP_DIR%memo_flutter.exe" -- %*
           endlocal
           '@
           $runner | Out-File -Encoding ASCII "build_output\stage\${{ env.APP_NAME }}\run_memo.bat"
@@ -237,63 +226,8 @@ jobs:
 
           $env:PATH = "$scriptDir\binaries\windows;$scriptDir\binaries\windows\cpu;$scriptDir\binaries\windows\nvidia;$scriptDir\binaries\windows\amd;$env:MEMO_HOME\data\bin;$env:PATH"
 
-          # Check if a backend is already running (e.g. started via the
-          # `memo` terminal CLI) - attach to it instead of killing it and
-          # starting a second one, which caused a port-bind conflict and
-          # crashed both.
-          $backendAlreadyRunning = $false
-          try {
-              Invoke-WebRequest -Uri 'http://127.0.0.1:8090/api/status' -Method GET -TimeoutSec 1 -UseBasicParsing -ErrorAction Stop | Out-Null
-              $backendAlreadyRunning = $true
-          } catch {}
-
-          $backend = $null
-          if (-not $backendAlreadyRunning) {
-              $stale = Get-Process -Name 'memo-backend' -ErrorAction SilentlyContinue
-              if ($stale) {
-                  try { Invoke-RestMethod -Uri 'http://127.0.0.1:8090/api/shutdown' -Method POST -TimeoutSec 2 } catch {}
-                  $null = $stale | Wait-Process -Timeout 2 -ErrorAction SilentlyContinue
-                  Get-Process -Name 'memo-backend' -ErrorAction SilentlyContinue | Stop-Process -Force
-              }
-
-              # --auto-shutdown ties the backend to the app window: once no window
-              # is attached (the app quit, or crashed and missed its heartbeats
-              # for ~90 s) it shuts down properly, stopping llama-server,
-              # cli-proxy-api and whisper-server itself. A backend someone runs
-              # as a service (plain `memo --headless`) never gets this flag and
-              # is attached to above, never stopped.
-              $backend = Start-Process -FilePath "$scriptDir\memo-backend.exe" -ArgumentList '--headless','--auto-shutdown' -WorkingDirectory $env:MEMO_HOME -WindowStyle Hidden -PassThru
-              $deadline = [DateTime]::UtcNow.AddMilliseconds(3000)
-              while ([DateTime]::UtcNow -lt $deadline -and -not $backend.HasExited) {
-                  try {
-                      Invoke-WebRequest -Uri 'http://127.0.0.1:8090/api/status' -Method GET -TimeoutSec 1 -UseBasicParsing -ErrorAction Stop | Out-Null
-                      $env:MEMO_BACKEND_READY_MS = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds().ToString()
-                      break
-                  } catch {
-                      Start-Sleep -Milliseconds 50
-                  }
-              }
-          } else {
-              $env:MEMO_BACKEND_READY_MS = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds().ToString()
-          }
-
-          $flutter = Start-Process -FilePath "$scriptDir\memo_flutter.exe" -WorkingDirectory $scriptDir -PassThru
-          $flutter.WaitForExit()
-
-          # Only stop the backend if THIS script started it. Ask, then wait for
-          # it: an --auto-shutdown backend ignores the request while the window
-          # still looks attached (a crashed window stays registered until it
-          # misses its heartbeats, ~90 s) and then closes itself. Killing it
-          # after 2 s, as this used to, skipped its shutdown and left
-          # llama-server, cli-proxy-api and whisper-server running with no
-          # window. The engines are killed by name only if it never exits.
-          if ($backend) {
-              try { Invoke-RestMethod -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 5 } catch {}
-              if (-not $backend.WaitForExit(120000)) {
-                  Stop-Process -Id $backend.Id -Force
-                  Get-Process -Name 'llama-server','cli-proxy-api','whisper-server' -ErrorAction SilentlyContinue | Stop-Process -Force
-              }
-          }
+          & "$scriptDir\memo-backend.exe" --desktop-session --port 8090 --ui "$scriptDir\memo_flutter.exe" -- @args
+          exit $LASTEXITCODE
           '@
           $ps1 | Out-File -Encoding ASCII "build_output\stage\${{ env.APP_NAME }}\launch.ps1"
 

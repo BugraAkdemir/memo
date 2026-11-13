@@ -988,8 +988,9 @@ func (a *App) StartWebServerHTTP(port int) error {
 // non-terminating hook to exercise the "timeout wins the race" branch
 // without actually killing the test binary.
 var (
-	shutdownTimeout   = 15 * time.Second
-	shutdownForceExit = os.Exit
+	shutdownPreEngineTimeout = 5 * time.Second
+	shutdownTimeout          = 15 * time.Second
+	shutdownForceExit        = os.Exit
 	// shutdownCleanup is the cleanup step itself, indirected so a test can
 	// substitute one that genuinely never finishes. The watchdog branch used
 	// to be exercised by shrinking shutdownTimeout to 1ns instead, which is a
@@ -1026,23 +1027,44 @@ func (a *App) Shutdown(ctx context.Context) {
 	})
 }
 
+func waitBounded(ctx context.Context, fn func(), label string) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer recoverPanic("shutdownSync/" + label)
+		fn()
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		logx.Printf("WARN: shutdown: %s exceeded pre-engine budget (%v)", label, ctx.Err())
+	}
+}
+
 // shutdownSync performs the actual cleanup. Split out from Shutdown so the
 // watchdog above can bound it without recursing into shutdownOnce.
 func (a *App) shutdownSync(ctx context.Context) {
 	logx.Info("Memo shutting down, cleaning up background processes...")
 
-	// Stop all running task lists so bypass permissions are restored before
-	// the rest of shutdown tears things down. Shutdown() also blocks until
-	// every run() goroutine has actually exited (bounded by ctx) — so no
-	// worker is still writing to the store/filesystem past this point.
+	preBudget := shutdownPreEngineTimeout
+	if preBudget <= 0 {
+		preBudget = 5 * time.Second
+	}
+	preCtx, preCancel := context.WithTimeout(ctx, preBudget)
+	defer preCancel()
+
+	// Stop all running task lists and chat subagents bounded by preBudget so
+	// hung pre-engine work cannot starve SQLite store.Close() or engine stops.
 	if a.taskloopEngine != nil {
-		a.taskloopEngine.Shutdown(ctx)
+		waitBounded(preCtx, func() { a.taskloopEngine.Shutdown(preCtx) }, "taskloop shutdown")
 	}
 
 	if a.chatSubAgents != nil {
-		if err := a.chatSubAgents.Shutdown(ctx); err != nil {
-			logx.Printf("subagent shutdown: %v", err)
-		}
+		waitBounded(preCtx, func() {
+			if err := a.chatSubAgents.Shutdown(preCtx); err != nil {
+				logx.Printf("subagent shutdown: %v", err)
+			}
+		}, "subagent shutdown")
 	}
 
 	// Cancel lifecycle context to stop all goroutines (proactive engine, calendar
@@ -1050,13 +1072,16 @@ func (a *App) shutdownSync(ctx context.Context) {
 	if a.lifecycleCancel != nil {
 		a.lifecycleCancel()
 	}
-	a.subAgentDispatchWG.Wait()
+	waitBounded(preCtx, a.subAgentDispatchWG.Wait, "subagent dispatch wait")
 	// A chat-title generation may still be mid-flight (an LLM call, then a
-	// write to the session store). It sees the cancelled lifecycle context and
-	// stops quickly; wait for it so it cannot write into a store that the rest
-	// of shutdown is about to close.
-	if !a.waitBackground(2 * time.Second) {
-		logx.Printf("WARN: shutdown: follow-up work (chat title) still running after 2s")
+	// write to the session store). Wait at most the remaining pre-engine budget
+	// (capped at 2s) so it cannot starve store.Close() or engine stops.
+	bgWait := 2 * time.Second
+	if preBudget < bgWait {
+		bgWait = preBudget
+	}
+	if !a.waitBackground(bgWait) {
+		logx.Printf("WARN: shutdown: follow-up work (chat title) still running after %v", bgWait)
 	}
 
 	a.webMu.RLock()

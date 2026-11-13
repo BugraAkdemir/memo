@@ -4,9 +4,10 @@
 
 ## Açık işler
 
-**mmproj / Windows frontend — 11 Kasım**
-- mmproj düzeltmesi/onarma push edildi; son oturum + docs/MMPROJ_WINDOWS_STARTUP_REVIEW.md. Gerçek “ofical gemma 4ab” repo kimliği/canlı kabul yok. CI pre-fix'te de düşen3sohbet testi ve Go1.26.10 güvenlik güncellemesi ayrı açık.
-- Windows60/40sn ölçümü, motor kopyası/sekme/font ve oturum sahipliği: docs/DESKTOP_STARTUP_LIFECYCLE_REVIEW.md + docs/plans/PLAN_desktop_tray_lifecycle.md. İlk tray düzeltmesi push; native/full CI ve gerçek cihaz kabulü açık. Startup/supervisor henüz yok. Linux/mac X varsayılanı host doğrulanana kadar eski hâlinde; kayıtlı tercihler korunur.
+**mmproj / Windows frontend & masaüstü sahipliği — 11–14 Kasım**
+- `docs/plans/PLAN_desktop_tray_lifecycle.md` Adım 1–5 `main` üzerinde tamamlandı (`9d9e3d0d`, `635a0cf6`, `d6ea5333`, `b209b35c`): Windows native tray, `StartupTiming`, normalleştirilmiş gömülü motor çözümü, çevrimdışı `Inter`/`SchibstedGrotesk` TTF fontları, `AppShell` `_visitedTabs` tembel sekme önbelleği + `CalendarReminderSync` + `--desktop-session` / `--owned` pipe-EOF oturum gözetmeni (`internal/procjob/session.go`, `EnsureSelf` `BREAKAWAY_OK` Job Object, Unix `-pgid`, `DetachedAttr`, `shutdownPreEngineTimeout`, Windows/Linux/macOS başlatıcıları `pkill`/`taskkill` olmadan).
+- Açık kabul: fiziksel Windows (cold/warm `StartupTiming`, Explorer/overflow/mascot, crash/Task-Kill) ve fiziksel macOS (Force Quit + `open_app`/updater) kabulü, artı güncel çalışma için uzak CI koşusu. Linux/mac X-to-tray varsayılanı host doğrulamasına dek eski hâlinde; kayıtlı tercihler korunur.
+- `docs/MMPROJ_WINDOWS_STARTUP_REVIEW.md` içindeki mmproj indirme/onarım ve Windows frontend başlangıç bulguları `main` üzerinde karşılandı (gerçek HF “ofical gemma 4ab” canlı kabulü yok). Önceden mevcut 3 sohbet testi (`TestIntegration_LongHistoryGetsCompacted`, `TestChat_StreamCutMidAnswerKeepsWhatTheUserSaw`, `TestChat_EmptyReplyIsExplainedNotSavedBlank`), `internal/updater` içindeki izlenmeyen `scripts/rust-ai-slides/node_modules` test çarpması ve `GO-2026-6859` için Go `1.26.10`→`1.26.11` (`go.mod` + workflow/Docker birlikte) güncellemesi ayrı açık.
 
 **Tanıtım filmi / Reels**
 - 4 Python/Rust Reels ve paket: build_output/marketing/python-rust-reels/; son kareler/altyazı/ZIP doğrulandı, kullanıcı geri bildirimi bekleniyor. Plan docs/plans/PLAN_python_rust_reels.md; önceki oturum ayrıntısı arşivde.
@@ -58,7 +59,7 @@
 
 ---
 
-# Son oturum — 12 Kasım — Windows tray ilk düzeltme
-- Yetkili uygulama: codex/desktop-tray-lifecycle, son kod3b3fca12 push. X için hazır icon+menu/2sn sınır/taskbar fallback, TR/EN, idempotent Quit. MIT tray_manager0.2.4 vendored: initialized/checked Windows shell, Explorer restore/fail→show, ana engine tray sahipliği. Ayrıntı raporda.
-- Yerel12 PASS/1 Windows-only SKIP; lib+test analiz eski3info, UI literal yok, diff check PASS. Native/full CI 43099165002/43099237732 KUYRUKTA; yeşil iddiası yok. Önceki aday CI iptali istendi; tekrar-yeşile dek yok. Native gerçek Explorer/overflow/mascot kabulü açık.
-- ECC Flutter inceleme; alt ajan/PR/tag/release yok. Plan1 yerel doğrulandı; plan2 native CI bekler. Startup ölçümü/kopya/sekme/font ve üç OS süreç sahibi sonraki ayrı adımlar. Kullanıcı dosyaları korundu.
+# Son oturum — 14 Kasım — Masaüstü başlangıç ve süreç sahipliği (Adım 2–5)
+- `main` üzerinde `PLAN_desktop_tray_lifecycle.md` Adım 2–5 tamamlandı: `9d9e3d0d` (Adım 2–3a `StartupTiming`), `635a0cf6` (Adım 3b motor yol çözümü + Windows kopya/sleep temizliği), `d6ea5333` (Adım 4 çevrimdışı TTF fontlar + tembel `AppShell` sekmeleri + `CalendarReminderSync`), `b209b35c` (Adım 5 `--desktop-session`/`--owned` pipe-EOF sahipliği, Windows `BREAKAWAY_OK` Job Object, Unix `-pgid`, `DetachedAttr`, `shutdownPreEngineTimeout`, Win/Linux/mac başlatıcıları).
+- Doğrulama (`b209b35c`): `go build`/`go vet -tags "sqlite_fts5" ./...` PASS; `go test -race` `.`, `procjob`, `browseropen`, `agent/tools`, `llama`, `whisper`, `tts`, `database`, `cliproxy` + `updater` (`Apply|PlaceNew|Swap`) + `app` (`ClientRegistry|Shutdown`) PASS; `GOOS=windows/darwin` build + darwin vet PASS. Flutter: `analyze lib/` yalnız 3 eski info; `flutter test --concurrency=1` `+1035 ~1` PASS; L10n literal check temiz.
+- Kapsam dışı/eski kırmızılar: `e2e` `TestChat_*` (2) ve `TestIntegration_LongHistoryGetsCompacted` (pre-existing); `updater` `Publish*/VerifyScript` (untracked `scripts/rust-ai-slides/node_modules`); `agent/tools` Windows test vet (`applaunch_test.go`). Fiziksel Windows/macOS cihaz testi ve `git push` kullanıcıda.

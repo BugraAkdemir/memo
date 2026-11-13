@@ -1,3 +1,10 @@
+# Son oturum — 12 Kasım — Windows tray ilk düzeltme
+- Yetkili uygulama: codex/desktop-tray-lifecycle, son kod3b3fca12 push. X için hazır icon+menu/2sn sınır/taskbar fallback, TR/EN, idempotent Quit. MIT tray_manager0.2.4 vendored: initialized/checked Windows shell, Explorer restore/fail→show, ana engine tray sahipliği. Ayrıntı raporda.
+- Yerel12 PASS/1 Windows-only SKIP; lib+test analiz eski3info, UI literal yok, diff check PASS. Native/full CI 43099165002/43099237732 KUYRUKTA; yeşil iddiası yok. Önceki aday CI iptali istendi; tekrar-yeşile dek yok. Native gerçek Explorer/overflow/mascot kabulü açık.
+- ECC Flutter inceleme; alt ajan/PR/tag/release yok. Plan1 yerel doğrulandı; plan2 native CI bekler. Startup ölçümü/kopya/sekme/font ve üç OS süreç sahibi sonraki ayrı adımlar. Kullanıcı dosyaları korundu.
+
+---
+
 # Son oturum — 11 Kasım — Windows görünmeyen tray bildirimi
 - Kullanıcı X sonrası pencere yok/backend açık AMA Memo tray simgesi yok dedi; normal tray küçültme kabul edilmedi. Frontend PID/overflow/kurulu sürüm/native hata henüz bilinmiyor.
 - tray_controller.dart: close engeli setIcon öncesi; init hata yakalama yok, onWindowClose `_trayReady` kontrol etmeden gizleyebilir. Somut zayıflık, cihazdaki kök neden kanıtı değil. Kaynak Windows ICO kullanıyor; eski PNG hatasına atfetme. Rapor sonuna kabul/fallback gereksinimi eklendi; üretim değişmedi.

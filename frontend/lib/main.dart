@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/l10n.dart';
 import 'core/notification_service.dart';
 import 'core/scope_restart.dart';
+import 'core/startup_timing.dart';
 import 'core/theme.dart';
 import 'core/tray_controller.dart';
 import 'providers/settings_provider.dart';
@@ -23,7 +24,9 @@ void main(List<String> args) async {
     return runMascotWindow();
   }
 
+  StartupTiming.instance.mark('dart_main');
   WidgetsFlutterBinding.ensureInitialized();
+  StartupTiming.instance.mark('binding_initialized');
 
   // A ConsumerStatefulWidget's Element can go defunct (torn down mid-
   // navigation/rebuild) at the exact moment an autoDispose
@@ -50,11 +53,14 @@ void main(List<String> args) async {
   };
 
   final prefs = await SharedPreferences.getInstance();
+  StartupTiming.instance.mark('prefs_ready');
   // Mobile only, and a no-op elsewhere — NotificationService.init() checks
   // notificationsSupported itself, so this costs desktop and web a single
   // boolean. Before runApp so a reminder tapped from the notification
   // shade has a fully initialized plugin to report itself to.
   await NotificationService.init();
+  StartupTiming.instance.mark('notifications_ready');
+  StartupTiming.instance.mark('run_app');
   runApp(MemoRoot(prefs: prefs));
 }
 

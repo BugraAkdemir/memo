@@ -6,6 +6,32 @@
 #include <windows.h>
 
 #include <iostream>
+#include <string>
+
+int64_t CurrentEpochMs() {
+  FILETIME ft;
+  ::GetSystemTimeAsFileTime(&ft);
+  ULARGE_INTEGER uli;
+  uli.LowPart = ft.dwLowDateTime;
+  uli.HighPart = ft.dwHighDateTime;
+  // Windows FILETIME epoch starts 1601-01-01; Unix epoch is 1970-01-01.
+  constexpr uint64_t kUnixEpochDiff100Ns = 116444736000000000ULL;
+  if (uli.QuadPart < kUnixEpochDiff100Ns) {
+    return 0;
+  }
+  return static_cast<int64_t>((uli.QuadPart - kUnixEpochDiff100Ns) / 10000ULL);
+}
+
+void RecordStartupMarkerEnv(const char* env_name, int64_t epoch_ms) {
+  if (env_name == nullptr || epoch_ms <= 0) {
+    return;
+  }
+  if (::GetEnvironmentVariableA(env_name, nullptr, 0) > 0) {
+    return;
+  }
+  const std::string value = std::to_string(epoch_ms);
+  ::SetEnvironmentVariableA(env_name, value.c_str());
+}
 
 void CreateAndAttachConsole() {
   if (::AllocConsole()) {

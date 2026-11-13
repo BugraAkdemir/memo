@@ -3,6 +3,7 @@
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "utils.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -24,7 +25,9 @@ bool FlutterWindow::OnCreate() {
   if (!flutter_controller_->engine() || !flutter_controller_->view()) {
     return false;
   }
+  RecordStartupMarkerEnv("MEMO_NATIVE_CONTROLLER_MS", CurrentEpochMs());
   RegisterPlugins(flutter_controller_->engine());
+  RecordStartupMarkerEnv("MEMO_NATIVE_PLUGINS_MS", CurrentEpochMs());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {

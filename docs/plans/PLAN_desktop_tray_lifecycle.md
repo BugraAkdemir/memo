@@ -8,7 +8,7 @@ moving on. No UI framework rewrite or literal single-PID migration.
 - [x] 1. Guard desktop hiding on successful icon/menu setup; retry failed setup,
   minimize to the taskbar with a TR/EN explanation if unavailable, serialize
   close events and test pending/failing/recovered tray initialization.
-- [ ] 2. Make Windows native tray results trustworthy: initialize structures,
+- [x] 2. Make Windows native tray results trustworthy: initialize structures,
   check image/shell errors, restore after Explorer restart, retain main-window
   ownership when a mascot window registers plugins, and verify native code in CI.
 - [ ] 3. Measure installed Windows startup stages, then normalize engine bundle
@@ -31,7 +31,7 @@ availability is validated. Upstream Linux set_icon reports success without
 proving a StatusNotifier host displays it. Keep existing defaults/saved choices
 in this first Windows-focused change; do not create inaccessible hidden apps.
 
-Item 2 source is implemented in 3b3fca12 (including earlier checkpoints), but the
-checkbox remains open until native CI verification. Windows run 43099165002 and
-full CI 43099237732 were queued at this documentation checkpoint. Actual installed
+Item 2 source is implemented in 3b3fca12 (including earlier checkpoints) and
+merged to `main` in `d626728b`; Windows native CI run `43099165002` and
+`Build Windows` (`43321361484`) passed. Actual installed
 Windows/Explorer/overflow/mascot acceptance is still open after automated checks.

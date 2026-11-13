@@ -3,7 +3,7 @@ name: Desktop Tray Verification
 on:
   workflow_dispatch:
   push:
-    branches: ['codex/desktop-tray-lifecycle']
+    branches: ['main', 'codex/desktop-tray-lifecycle']
     paths:
       - 'frontend/**'
       - '.github/workflows/desktop-tray-check.yml'

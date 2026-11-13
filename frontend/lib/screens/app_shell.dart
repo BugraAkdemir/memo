@@ -6,6 +6,7 @@ import 'dart:io';
 
 import '../core/l10n.dart';
 import '../core/platform_capabilities.dart';
+import '../core/startup_timing.dart';
 import '../core/theme.dart';
 import '../models/agent.dart';
 import '../providers/settings_provider.dart';
@@ -106,6 +107,8 @@ class _AppShellState extends ConsumerState<AppShell> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      StartupTiming.instance.mark('first_frame_rasterized');
+      StartupTiming.instance.reportOnce();
       if (!mounted) return;
       final setupComplete = ref.read(setupCompleteProvider);
       if (setupComplete) {
@@ -132,6 +135,7 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    StartupTiming.instance.mark('first_shell_build');
     final locale = ref.watch(localeProvider);
     L10n.setLocale(locale);
     // Below this width NavRail hides entirely (it never got a mobile

@@ -1,12 +1,21 @@
 #ifndef RUNNER_UTILS_H_
 #define RUNNER_UTILS_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
 // Creates a console for the process, and redirects stdout and stderr to
 // it for both the runner and the Flutter library.
 void CreateAndAttachConsole();
+
+// Returns current UTC wall-clock time in Unix milliseconds using
+// GetSystemTimeAsFileTime (shared clock with PowerShell/Dart startup markers).
+int64_t CurrentEpochMs();
+
+// Records an environment variable timestamp (if not already set) for startup
+// stage measurement.
+void RecordStartupMarkerEnv(const char* env_name, int64_t epoch_ms);
 
 // Takes a null-terminated wchar_t* encoded in UTF-16 and returns a std::string
 // encoded in UTF-8. Returns an empty std::string on failure.

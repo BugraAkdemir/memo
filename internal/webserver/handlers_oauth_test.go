@@ -118,7 +118,7 @@ func TestFetchOpenRouterModelEffortLevels_ModelNotFound(t *testing.T) {
 // model 400s on reasoning_effort, so a non-empty static answer here would
 // be actively unsafe.
 func TestHandleProviderEffortLevels_UndiscoveredTypeReturnsEmpty(t *testing.T) {
-	for _, ptype := range []string{"openai", "grok", "groq", "llamacpp", "opencode-zen", "opencode-go", "custom"} {
+	for _, ptype := range []string{"openai", "grok", "groq", "llamacpp", "opencode-zen", "opencode-go"} {
 		t.Run(ptype, func(t *testing.T) {
 			s := New(&swarmStubBridge{})
 
@@ -137,6 +137,41 @@ func TestHandleProviderEffortLevels_UndiscoveredTypeReturnsEmpty(t *testing.T) {
 			}
 			if len(got.Levels) != 0 {
 				t.Errorf("levels = %v, want empty — %q has no known capability signal", got.Levels, ptype)
+			}
+		})
+	}
+}
+
+func TestHandleProviderEffortLevels_CustomReturnsStandardLevels(t *testing.T) {
+	for _, tc := range []struct {
+		ptype string
+		want  []string
+	}{
+		{"custom", []string{"none", "minimal", "low", "medium", "high", "xhigh"}},
+		{"custom-anthropic", []string{"low", "medium", "high", "xhigh", "max"}},
+	} {
+		t.Run(tc.ptype, func(t *testing.T) {
+			s := New(&swarmStubBridge{})
+			r := httptest.NewRequest(http.MethodGet, "/api/providers/effort-levels?type="+tc.ptype, nil)
+			w := httptest.NewRecorder()
+			s.handleProviderEffortLevels(w, r)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+			}
+			var got struct {
+				Levels []string `json:"levels"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+				t.Fatalf("unmarshal response: %v", err)
+			}
+			if len(got.Levels) != len(tc.want) {
+				t.Fatalf("levels = %v, want %v", got.Levels, tc.want)
+			}
+			for i := range tc.want {
+				if got.Levels[i] != tc.want[i] {
+					t.Errorf("levels[%d] = %q, want %q", i, got.Levels[i], tc.want[i])
+				}
 			}
 		})
 	}

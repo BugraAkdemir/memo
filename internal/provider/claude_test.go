@@ -474,6 +474,27 @@ func TestClaudeProvider_ListModels_FiltersToModelTypeOnly(t *testing.T) {
 	}
 }
 
+func TestClaudeProvider_ListModels_AllowsOmittedTypeForCustomProxies(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]string{
+				{"id": "claude-sonnet-4-6"},
+				{"type": "something-else", "id": "not-a-model"},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	p := newTestClaudeProvider(t, srv, "claude-sonnet-4-6")
+	models, err := p.ListModels(context.Background())
+	if err != nil {
+		t.Fatalf("ListModels() error = %v", err)
+	}
+	if len(models) != 1 || models[0] != "claude-sonnet-4-6" {
+		t.Errorf("ListModels() = %v, want [claude-sonnet-4-6]", models)
+	}
+}
+
 // TestClaudeProvider_ListModels_Returns401AsErrorNotEmptySuccess mirrors
 // TestOpenAIProvider_ListModels_Returns401AsErrorNotEmptySuccess — same P2
 // found in a 2026-09-23 audit, same fix (a status check before decoding),

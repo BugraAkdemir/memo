@@ -251,7 +251,9 @@ class ProviderDefaults {
       type == 'opencode-zen' ||
       type == 'opencode-go' ||
       type == 'kilo' ||
-      type == 'cline';
+      type == 'cline' ||
+      type == 'custom' ||
+      type == 'custom-anthropic';
 
   /// Providers whose model browser is free-aware (each model carries a real
   /// is_free flag, server-derived from pricing or an id-suffix convention —

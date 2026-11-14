@@ -108,7 +108,7 @@ func (p *claudeProvider) ListModels(ctx context.Context) ([]string, error) {
 	}
 	models := make([]string, 0, len(result.Data))
 	for _, m := range result.Data {
-		if m.Type == "model" {
+		if (m.Type == "model" || m.Type == "") && m.ID != "" {
 			models = append(models, m.ID)
 		}
 	}

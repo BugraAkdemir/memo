@@ -198,8 +198,17 @@ class _ProviderConfigDialogState
   static const _keylessBrowserTypes = {'kilo', 'opencode-zen', 'cline'};
 
   Future<void> _openModelBrowser() async {
+    final baseUrl = _baseUrlCtrl.text.trim();
+    if (ProviderDefaults.needsBaseUrl(_type) && baseUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(L10n.t('custom_base_url_required'))),
+      );
+      return;
+    }
     final apiKey = _apiKeyCtrl.text.trim();
-    if (apiKey.isEmpty && !_keylessBrowserTypes.contains(_type)) {
+    if (apiKey.isEmpty &&
+        !_keylessBrowserTypes.contains(_type) &&
+        ProviderDefaults.needsApiKey(_type)) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(L10n.t('enter_api_key_first'))),
       );

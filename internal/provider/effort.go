@@ -85,3 +85,20 @@ func GeminiThinkingBudgetForLevel(level string) (budget int, ok bool) {
 func EffortLevelsForGemini() []string {
 	return []string{"minimal", "low", "medium", "high", "max"}
 }
+
+// EffortLevelsForCustom returns the standard reasoning-effort labels for
+// user-defined custom endpoints (ProviderCustom / ProviderCustomAnthropic).
+// Custom endpoints have no standard capability-discovery API, yet users point
+// them at reasoning models and proxies; leaving EffortLevel unset ("") still
+// omits the parameter, so non-reasoning models are unaffected until the user
+// explicitly picks a level.
+func EffortLevelsForCustom(t ProviderType) []string {
+	switch t {
+	case ProviderCustom:
+		return []string{"none", "minimal", "low", "medium", "high", "xhigh"}
+	case ProviderCustomAnthropic:
+		return []string{"low", "medium", "high", "xhigh", "max"}
+	default:
+		return nil
+	}
+}

@@ -22,6 +22,22 @@ class _Api extends MemoApiClient {
   Future<void> updateProvider(ProviderConfig config) async {
     saved = config;
   }
+
+  String? fetchedModelsType;
+  String? fetchedModelsBaseUrl;
+  @override
+  Future<Map<String, dynamic>> fetchProviderModels({
+    required String type,
+    required String apiKey,
+    String? baseUrl,
+  }) async {
+    fetchedModelsType = type;
+    fetchedModelsBaseUrl = baseUrl;
+    return {
+      'status': 'ok',
+      'models': ['custom-model-a', 'custom-model-b'],
+    };
+  }
 }
 
 void main() {
@@ -174,5 +190,47 @@ void main() {
     final copied = ProviderConfig.fromJson(p.copyWith(enabled: true).toJson());
     expect(copied.chatModels.map((m) => m.id), ['chat-one', 'review']);
     expect(copied.configuredModels.last.id, 'review');
+  });
+
+  testWidgets('custom provider fetches models from /models without API key', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1200, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final api = _Api();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [apiClientProvider.overrideWithValue(api)],
+        child: const MaterialApp(
+          home: Scaffold(
+            body: ProviderConfigDialog(
+              existing: ProviderConfig(
+                type: 'custom',
+                name: 'My Proxy',
+                baseUrl: 'http://127.0.0.1:4000/v1',
+                model: '',
+                enabled: true,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.text(L10n.t('select')));
+    await tester.tap(find.text(L10n.t('select')));
+    await tester.pumpAndSettle();
+
+    expect(api.fetchedModelsType, 'custom');
+    expect(api.fetchedModelsBaseUrl, 'http://127.0.0.1:4000/v1');
+    expect(find.text('custom-model-b'), findsOneWidget);
+
+    await tester.tap(find.text('custom-model-b'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'custom-model-b'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

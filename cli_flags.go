@@ -96,6 +96,8 @@ SUNUCU / SERVER
   --port <n>                  Backend portu (varsayılan 8090) / backend port
   --lan                       (--headless ile) 0.0.0.0'a bağlan, X-Memo-Token zorunlu
                               (with --headless) bind 0.0.0.0, require X-Memo-Token
+  --os-mode                   KorteksOS Ring-1 OS modunu etkinleştir / enable KorteksOS Ring-1 bridge
+  --oobe                      KorteksOS ilk kurulum sihirbazı modu / KorteksOS OOBE mode
 
 YÖNETİM / MANAGEMENT (SSH-only self-hosted kurulum için / for SSH-only self-hosted setups)
   memo config get/set <key> [value]         config.yaml'ı düzenle / edit config.yaml

@@ -73,6 +73,9 @@ func NewRegistry() *ToolRegistry {
 	}
 	r.registerBuiltins()
 	r.registerChatSubAgentTools()
+	if isKorteksOSModeEnabled() {
+		r.RegisterOSTools("")
+	}
 	return r
 }
 func (r *ToolRegistry) registerBuiltins() {

@@ -527,6 +527,11 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/mood/self-interest", s.handleSelfInterestSettings)
 	route("/api/mood/system-management", s.handleSystemManagementSettings)
 
+	// KorteksOS Ring-1 OS Bridge, Doctor & OOBE
+	route("/api/os/doctor/event", s.adminOnly(s.handleOSDoctorEvent))
+	route("/api/os/status", s.handleOSStatus)
+	route("/api/os/oobe/complete", s.adminOnly(s.handleOSOOBEComplete))
+
 	// Minimal browser client (index.html/app.js/style.css) — a catch-all,
 	// lowest-priority route: Go's ServeMux always prefers the more specific
 	// "/api/..." registrations above over this "/", so it can never shadow

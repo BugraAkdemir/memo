@@ -70,6 +70,8 @@ func main() {
 	listMessages := flag.Bool("list", false, "Requires -chat <id>: print that chat's message history and exit — no message sent. Cannot be combined with -p or -memory.")
 	memoryQuery := flag.String("memory", "", "Requires -chat <id>: usage|saved — show memory info for that chat and exit instead of sending a message. \"usage\" prints each message's memory_used count (real, persisted data). \"saved\" is refused with an explanation: memory entries don't record which chat produced them, so it can't be answered honestly. Cannot be combined with -p or -list.")
 	lanMode := flag.Bool("lan", false, "Headless mode only: bind 0.0.0.0 instead of 127.0.0.1 and require the X-Memo-Token/Authorization Bearer header on every request (same auth remote access uses), instead of a 127.0.0.1-only bind that nothing outside the host — including Docker's own port-forwarding — can reach. For running the backend as a LAN-reachable service (Docker/CasaOS, a home server), not for the interactive REPL/GUI path. A token is generated on first use and persisted to config.yaml; it is printed to the log on every boot.")
+	osMode := flag.Bool("os-mode", false, "KorteksOS Ring-1 OS mode: enable memo-sysd Unix socket bridge (/run/korteksos/sysd.sock) and OS tools")
+	oobeMode := flag.Bool("oobe", false, "KorteksOS First-Boot OOBE mode: expose first-boot hardware/model/ring wizard state")
 
 	// Standalone commands: each prints or does one thing and exits, without
 	// starting a session or touching the backend lifecycle. Both the short
@@ -91,6 +93,13 @@ func main() {
 
 	flag.Usage = func() { printHelp(versionFile) }
 	flag.Parse()
+
+	if *osMode || *oobeMode {
+		_ = os.Setenv("KORTEKS_OS_MODE", "1")
+	}
+	if *oobeMode {
+		_ = os.Setenv("KORTEKS_OOBE_MODE", "1")
+	}
 
 	// Handled before anything else — none of these need a backend, a config
 	// load, or the log redirection below, and several are the things a user
@@ -682,12 +691,20 @@ func runDesktopSessionMain(port int, uiPath string, uiArgs []string) int {
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	client := replcli.NewClient(baseURL)
 
+	backendArgs := []string{"--headless", "--port", strconv.Itoa(port), "--auto-shutdown", "--owned"}
+	if os.Getenv("KORTEKS_OS_MODE") == "1" {
+		backendArgs = append(backendArgs, "--os-mode")
+	}
+	if os.Getenv("KORTEKS_OOBE_MODE") == "1" {
+		backendArgs = append(backendArgs, "--oobe")
+	}
+
 	code, err := procjob.RunDesktopSession(sigCtx, procjob.DesktopSessionConfig{
 		UIPath:      uiPath,
 		UIArgs:      uiArgs,
 		UIEnv:       uiEnv,
 		BackendPath: exe,
-		BackendArgs: []string{"--headless", "--port", strconv.Itoa(port), "--auto-shutdown", "--owned"},
+		BackendArgs: backendArgs,
 		ProbeHealthy: func(pCtx context.Context) bool {
 			return client.Status(pCtx) == nil
 		},

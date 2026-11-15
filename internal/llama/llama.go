@@ -657,7 +657,7 @@ func resolveBinary(configured string, mode string) (string, error) {
 	}
 
 	// 3. Check Bundled Paths (Auto-detect order) in all search bases
-	flavors := []string{"amd", "nvidia", "cpu"}
+	flavors := autoFlavorOrder(currentOS, detectGPUForFlavor())
 	for _, base := range bundledSearchBases() {
 		// The old order (amd, nvidia, cpu) picked the first folder that exists, so
 		// an amd (ROCm) folder on a machine ROCm does not support silently ran
@@ -753,6 +753,35 @@ func FlavorOfPath(bin string) string {
 		return filepath.Base(d)
 	}
 	return ""
+}
+
+// detectGPUForFlavor is a test seam for autoFlavorOrder selection.
+var detectGPUForFlavor = func() GPUType { return DetectGPU().Type }
+
+// autoFlavorOrder orders bundled engine flavors for "auto" mode.
+// On Linux, gpuSelector probes each build with --list-devices and requires
+// "cpu" to be last (cpu immediately ends the walk). On Windows/macOS where
+// --list-devices is not probed, the first existing flavor is chosen, so
+// DetectGPU()'s vendor must come first instead of always trying "amd" first.
+func autoFlavorOrder(goos string, gpuType GPUType) []string {
+	if goos == "linux" {
+		if gpuType == GPUTypeNVIDIA {
+			return []string{"nvidia", "amd", "cpu"}
+		}
+		return []string{"amd", "nvidia", "cpu"}
+	}
+	switch gpuType {
+	case GPUTypeNVIDIA:
+		return []string{"nvidia", "amd", "cpu"}
+	case GPUTypeAMD:
+		return []string{"amd", "cpu", "nvidia"}
+	case GPUTypeMetal:
+		return []string{"metal", "cpu", "amd", "nvidia"}
+	case GPUTypeCPU:
+		return []string{"cpu", "amd", "nvidia"}
+	default:
+		return []string{"amd", "nvidia", "cpu"}
+	}
 }
 
 // binarySearchBases returns directories to search for engine binaries: the

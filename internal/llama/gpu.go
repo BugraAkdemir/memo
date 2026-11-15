@@ -80,9 +80,14 @@ func detectNVIDIA() (GPUInfo, bool) {
 	// Check if nvidia-smi exists (also check common Windows paths)
 	nvidiaSmi := "nvidia-smi"
 	if runtime.GOOS == "windows" {
+		systemRoot := os.Getenv("SystemRoot")
+		if systemRoot == "" {
+			systemRoot = `C:\Windows`
+		}
 		winPaths := []string{
 			`C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe`,
 			`C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi`,
+			filepath.Join(systemRoot, "System32", "nvidia-smi.exe"),
 		}
 		for _, p := range winPaths {
 			if _, err := os.Stat(p); err == nil {

@@ -508,3 +508,26 @@ func TestServerStartupFailureTail(t *testing.T) {
 		t.Fatalf("expected GPU failure in tail, got %q", tail)
 	}
 }
+
+func TestAutoFlavorOrder(t *testing.T) {
+	cases := []struct {
+		goos string
+		gpu  GPUType
+		want string
+	}{
+		{"windows", GPUTypeNVIDIA, "nvidia,amd,cpu"},
+		{"windows", GPUTypeAMD, "amd,cpu,nvidia"},
+		{"windows", GPUTypeCPU, "cpu,amd,nvidia"},
+		{"darwin", GPUTypeMetal, "metal,cpu,amd,nvidia"},
+		{"darwin", GPUTypeCPU, "cpu,amd,nvidia"},
+		{"linux", GPUTypeNVIDIA, "nvidia,amd,cpu"},
+		{"linux", GPUTypeAMD, "amd,nvidia,cpu"},
+		{"linux", GPUTypeCPU, "amd,nvidia,cpu"},
+	}
+	for _, tc := range cases {
+		got := strings.Join(autoFlavorOrder(tc.goos, tc.gpu), ",")
+		if got != tc.want {
+			t.Errorf("autoFlavorOrder(%q, %q) = %s, want %s", tc.goos, tc.gpu, got, tc.want)
+		}
+	}
+}

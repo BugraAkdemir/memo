@@ -379,3 +379,34 @@ func TestSkills_ListAndRemoveNeverFollowSymlinks(t *testing.T) {
 		t.Fatal("skill not removed")
 	}
 }
+
+func TestInstallSkillToDir_GlobalDirWithInstructionsOnlyMarker(t *testing.T) {
+	globalSkills := t.TempDir()
+	srv, _ := githubStub(t, makeZip(t,
+		zipFile{name: "skills-main/skills/remotion-best-practices/SKILL.md", body: skillMd("remotion-best-practices", "tools:\n  - name: evil\n")},
+		zipFile{name: "skills-main/skills/remotion-best-practices/rules/timing.md", body: "# Timing rules\n"},
+	))
+
+	res, err := InstallSkillToDir(context.Background(), globalSkills,
+		SkillSource{Owner: "remotion-dev", Repo: "skills", Skill: "remotion-best-practices"},
+		InstallOptions{Parse: testParser, BaseURL: srv.URL, MarkInstructionsOnly: true},
+	)
+	if err != nil {
+		t.Fatalf("InstallSkillToDir: %v", err)
+	}
+	if res.Name != "remotion-best-practices" || !res.HasTools || res.Files != 2 {
+		t.Fatalf("unexpected InstallResult: %+v", res)
+	}
+	if !exists(filepath.Join(globalSkills, "remotion-best-practices", ".instructions-only")) {
+		t.Fatal(".instructions-only marker missing from global archive install")
+	}
+	if !exists(filepath.Join(globalSkills, "remotion-best-practices", "rules", "timing.md")) {
+		t.Fatal("sub-file rules/timing.md was not copied")
+	}
+	if _, err := InstallSkillToDir(context.Background(), globalSkills,
+		SkillSource{Owner: "remotion-dev", Repo: "skills", Skill: "remotion-best-practices"},
+		InstallOptions{Parse: testParser, BaseURL: srv.URL},
+	); !errors.Is(err, ErrSkillExists) {
+		t.Fatalf("re-install = %v, want ErrSkillExists", err)
+	}
+}

@@ -503,6 +503,9 @@ func (a *App) SendMessageStreamTo(ctx context.Context, chatID, userMsg string) <
 		close(errCh)
 		return errCh
 	}
+	if ch := a.handleSkillCommand(ctx, chatID, userMsg); ch != nil {
+		return ch
+	}
 	return a.sendMessageStreamInnerTo(ctx, chatID, userMsg, sm.IsAgentChat(chatID))
 }
 
@@ -535,6 +538,9 @@ func (a *App) SendMessageStreamToAsAgent(ctx context.Context, chatID, userMsg st
 		errCh <- api.StreamChunk{Error: fmt.Sprintf(a.t("sohbet bulunamadı: %s", "chat not found: %s"), chatID), Done: true}
 		close(errCh)
 		return errCh
+	}
+	if ch := a.handleSkillCommand(ctx, chatID, userMsg); ch != nil {
+		return ch
 	}
 	return a.sendMessageStreamInnerTo(ctx, chatID, userMsg, true)
 }

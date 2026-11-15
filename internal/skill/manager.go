@@ -119,6 +119,38 @@ func (m *Manager) Install(sourcePath string) (*SkillDefinition, error) {
 	return def, nil
 }
 
+// RegisterDir loads an already-installed skill directory inside SkillsDir into
+// the in-memory skill registry without copying files again.
+func (m *Manager) RegisterDir(dir string) (*SkillDefinition, error) {
+	def, err := LoadSkill(dir)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateSkillName(def.Manifest.Name); err != nil {
+		return nil, err
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	skillsDir, err := filepath.Abs(m.SkillsDir())
+	if err != nil {
+		return nil, fmt.Errorf("resolve skills dir: %w", err)
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, fmt.Errorf("resolve skill dir: %w", err)
+	}
+	if !strings.HasPrefix(absDir+string(filepath.Separator), skillsDir+string(filepath.Separator)) {
+		return nil, fmt.Errorf("skill path %q resolves outside skills directory", dir)
+	}
+
+	def.Path = dir
+	m.skills[def.Manifest.Name] = def
+	m.registerToolsLocked(def)
+	return def, nil
+}
+
 // validateSkillName rejects names that contain path-traversal sequences.
 func validateSkillName(name string) error {
 	if name == "" {

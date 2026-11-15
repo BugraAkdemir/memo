@@ -4,8 +4,9 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"memo/internal/logx"
@@ -96,20 +97,54 @@ func (a *App) lookupSkill(chatID, name string) (*skill.SkillDefinition, bool) {
 }
 
 // InstallProjectSkill installs a skill from a GitHub source (see
-// project.ParseSkillSource) into chatID's project.
+// project.ParseSkillSource). In a set-up project chat it installs into the
+// project's `.memo/skills`; otherwise (normal desktop/web chats, Telegram,
+// WhatsApp, or folders without `.memo`) it installs into Memo's global skills
+// library and registers it immediately so use_skill and /skill:on see it right
+// away without a restart.
 func (a *App) InstallProjectSkill(ctx context.Context, chatID, source string) (*project.InstallResult, error) {
-	path, _, ok := a.projectRootForChat(chatID)
-	if !ok {
-		if !a.isProjectChat(chatID) {
-			return nil, errors.New("this is not a project chat; open a chat in a project folder first")
-		}
-		return nil, project.ErrNotSetUp
-	}
 	src, err := project.ParseSkillSource(source)
 	if err != nil {
 		return nil, err
 	}
-	return a.projectManager().InstallSkill(ctx, path, src, project.InstallOptions{Parse: parseProjectSkill, BaseURL: a.projectSkillBaseURL})
+	opt := project.InstallOptions{
+		Parse:   parseProjectSkill,
+		BaseURL: a.projectSkillBaseURL,
+	}
+	if path, _, ok := a.projectRootForChat(chatID); ok {
+		return a.projectManager().InstallSkill(ctx, path, src, opt)
+	}
+	if a.skillManager == nil {
+		return nil, fmt.Errorf("skill manager not initialized")
+	}
+	opt.MarkInstructionsOnly = true
+	skillsDir := a.skillManager.SkillsDir()
+	res, err := project.InstallSkillToDir(ctx, skillsDir, src, opt)
+	if err != nil {
+		return nil, err
+	}
+	res.Global = true
+	targetDir := filepath.Join(skillsDir, res.Dir)
+	if _, err := a.skillManager.RegisterDir(targetDir); err != nil {
+		_ = os.RemoveAll(targetDir)
+		return nil, err
+	}
+	return res, nil
+}
+
+// deactivateChatSkill removes name from chatID's active skills list if present.
+func (a *App) deactivateChatSkill(chatID, name string) {
+	sm := a.getSessionManager()
+	if sm == nil || chatID == "" {
+		return
+	}
+	var keep []string
+	for _, n := range sm.GetActiveSkills(chatID) {
+		if n != name {
+			keep = append(keep, n)
+		}
+	}
+	_ = sm.SetActiveSkills(chatID, keep)
 }
 
 // RemoveProjectSkill deletes project skill name from chatID's project and
@@ -122,15 +157,7 @@ func (a *App) RemoveProjectSkill(chatID, name string) error {
 	if err := a.projectManager().RemoveSkill(path, name); err != nil {
 		return err
 	}
-	if sm := a.getSessionManager(); sm != nil {
-		var keep []string
-		for _, n := range sm.GetActiveSkills(chatID) {
-			if n != name {
-				keep = append(keep, n)
-			}
-		}
-		_ = sm.SetActiveSkills(chatID, keep)
-	}
+	a.deactivateChatSkill(chatID, name)
 	return nil
 }
 
@@ -147,11 +174,19 @@ func (ad projectSkillToolAdapter) InstallProjectSkill(ctx context.Context, sourc
 
 func describeInstalledSkill(res *project.InstallResult) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "Installed skill %q (%d files) into .memo/skills/%s from %s.", res.Name, res.Files, res.Dir, res.Source)
+	if res.Global {
+		fmt.Fprintf(&sb, "Installed global skill %q (%d files) from %s.", res.Name, res.Files, res.Source)
+	} else {
+		fmt.Fprintf(&sb, "Installed skill %q (%d files) into .memo/skills/%s from %s.", res.Name, res.Files, res.Dir, res.Source)
+	}
 	if res.Description != "" {
 		fmt.Fprintf(&sb, " %s.", strings.TrimRight(res.Description, "."))
 	}
-	fmt.Fprintf(&sb, " It is not active yet: the user turns it on with /skill:on %s.", res.Dir)
+	if res.Global {
+		fmt.Fprintf(&sb, " Call use_skill with %q to load and follow it in this chat (or turn it on with /skill:on %s).", res.Name, res.Dir)
+	} else {
+		fmt.Fprintf(&sb, " It is not active yet: the user turns it on with /skill:on %s.", res.Dir)
+	}
 	if res.HasTools {
 		sb.WriteString(" Tools declared by this skill are ignored; only its instructions are used.")
 	}

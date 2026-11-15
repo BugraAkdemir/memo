@@ -179,6 +179,9 @@ func (a *App) handleSkillCommand(ctx context.Context, chatID, userMsg string) <-
 			err = a.RemoveProjectSkill(chatID, name)
 		} else {
 			err = a.skillManager.Remove(name)
+			if err == nil {
+				a.deactivateChatSkill(chatID, name)
+			}
 		}
 		if err != nil {
 			ch <- api.StreamChunk{Content: fmt.Sprintf("❌ Remove failed: %s", err.Error())}
@@ -248,7 +251,7 @@ func (a *App) handleSkillCommand(ctx context.Context, chatID, userMsg string) <-
 		return ch
 
 	default:
-		ch <- api.StreamChunk{Content: fmt.Sprintf("❌ Unknown skill command: `%s`\n\nUsage:\n- `/skill` — list skills\n- `/skill install <path>` — install from path\n- `/skill add <github source>` — add a skill to this project (owner/repo, a github.com URL, or a pasted `npx skills add …` line; nothing is run)\n- `/skill remove <name>` — remove skill\n- `/skill:on <name>` — activate skill\n- `/skill:off <name>` — deactivate skill\n- `/skill:off` — deactivate all", cmd)}
+		ch <- api.StreamChunk{Content: fmt.Sprintf("❌ Unknown skill command: `%s`\n\nUsage:\n- `/skill` — list skills\n- `/skill install <path>` — install from path\n- `/skill add <github source>` — add a skill from GitHub (to this project if in one, otherwise globally; owner/repo, a github.com URL, or a pasted `npx skills add …` line; nothing is run)\n- `/skill remove <name>` — remove skill\n- `/skill:on <name>` — activate skill\n- `/skill:off <name>` — deactivate skill\n- `/skill:off` — deactivate all", cmd)}
 		ch <- api.StreamChunk{Done: true}
 		close(ch)
 		return ch

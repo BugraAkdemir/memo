@@ -12,6 +12,7 @@ import (
 )
 
 const frontMatterDelim = "---"
+const instructionsOnlyMarker = ".instructions-only"
 
 // topLevelScalarKey matches an unindented `key: value` line for one of the
 // manifest's plain string fields — never `tools:`/`metadata:` block starters
@@ -53,7 +54,14 @@ func LoadSkill(dir string) (*SkillDefinition, error) {
 		return nil, fmt.Errorf("read SKILL.md: %w", err)
 	}
 
-	return ParseSkill(data, dir)
+	def, err := ParseSkill(data, dir)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Lstat(filepath.Join(dir, instructionsOnlyMarker)); err == nil {
+		def.Manifest.Tools = nil
+	}
+	return def, nil
 }
 
 func ParseSkill(data []byte, baseDir string) (*SkillDefinition, error) {

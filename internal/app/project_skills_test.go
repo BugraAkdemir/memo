@@ -154,8 +154,20 @@ func TestSkillCommand_AddListAndRemove(t *testing.T) {
 	if list := run(plainChat, "/skill"); strings.Contains(list, "Project skills") {
 		t.Fatalf("a plain chat lists project skills:\n%s", list)
 	}
-	if got := run(plainChat, "/skill add acme/repo"); !strings.Contains(got, "❌") {
-		t.Fatalf("add from a plain chat must fail: %q", got)
+	if got := run(plainChat, "/skill add acme/repo/skills/lint --skill lint"); !strings.Contains(got, "✅") || !strings.Contains(got, "Installed global skill") {
+		t.Fatalf("add from a plain chat must install globally: %q", got)
+	}
+	if list := run(plainChat, "/skill"); !strings.Contains(list, "lint") {
+		t.Fatalf("newly added global skill missing from /skill listing:\n%s", list)
+	}
+	if got := run(plainChat, "/skill:on lint"); !strings.Contains(got, "✅") {
+		t.Fatalf("global activate in plainChat: %q", got)
+	}
+	if got := run(plainChat, "/skill remove lint"); !strings.Contains(got, "✅") {
+		t.Fatalf("global remove in plainChat: %q", got)
+	}
+	if active := a.GetChatActiveSkills(plainChat); len(active) != 0 {
+		t.Fatalf("a removed global skill stayed active: %v", active)
 	}
 
 	if got := run(projChat, "/skill:on lint"); !strings.Contains(got, "✅") {
@@ -172,9 +184,76 @@ func TestSkillCommand_AddListAndRemove(t *testing.T) {
 	}
 }
 
-func TestInstallProjectSkill_NeedsAProjectChat(t *testing.T) {
-	a, _, plainChat, _ := skillApp(t)
-	if _, err := a.InstallProjectSkill(context.Background(), plainChat, "acme/repo"); err == nil || !strings.Contains(err.Error(), "not a project chat") {
-		t.Fatalf("plain chat: %v", err)
+func TestInstallProjectSkill_InstallsGloballyForNonProjectAndBackgroundChats(t *testing.T) {
+	a, _, plainChat, root := skillApp(t)
+	sm := a.getSessionManager()
+	tgChat := sm.NewBackgroundChat("Telegram Asistanı")
+
+	archive := zipOf(t, map[string]string{
+		"skills-main/skills/remotion-best-practices/SKILL.md": strings.Replace(toolSkill, "name: deploy", "name: remotion-best-practices", 1),
+		"skills-main/skills/remotion-best-practices/rules/compositions.md": "# Compositions\n",
+	})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(archive)
+	}))
+	defer srv.Close()
+	a.projectSkillBaseURL = srv.URL
+
+	res, err := a.InstallProjectSkill(context.Background(), tgChat, "npx skills add https://github.com/remotion-dev/skills --skill remotion-best-practices")
+	if err != nil {
+		t.Fatalf("InstallProjectSkill on background chat: %v", err)
+	}
+	if !res.Global || res.Name != "remotion-best-practices" || !res.HasTools {
+		t.Fatalf("unexpected InstallResult: %+v", res)
+	}
+	// Must live in global skills, never inside a project's .memo/skills.
+	if _, err := os.Stat(filepath.Join(root, ".memo", "skills", "remotion-best-practices")); !os.IsNotExist(err) {
+		t.Fatal("global install unexpectedly wrote into project .memo/skills")
+	}
+	if _, err := os.Stat(filepath.Join(a.skillManager.SkillsDir(), "remotion-best-practices", "SKILL.md")); err != nil {
+		t.Fatalf("global SKILL.md missing: %v", err)
+	}
+
+	// Tools declared in a remote archive must be stripped both now and after Discover().
+	def, ok := a.skillManager.Get("remotion-best-practices")
+	if !ok || len(def.Manifest.Tools) != 0 {
+		t.Fatalf("global archive install must exist and strip tools: ok=%v def=%+v", ok, def)
+	}
+	if err := a.skillManager.Discover(); err != nil {
+		t.Fatalf("Discover: %v", err)
+	}
+	if def2, ok := a.skillManager.Get("remotion-best-practices"); !ok || len(def2.Manifest.Tools) != 0 {
+		t.Fatalf("tools reappeared after Discover(): ok=%v def=%+v", ok, def2)
+	}
+
+	// Immediately usable via use_skill on the Telegram/background chat without affecting other chats.
+	out, err := skillToolAdapter{a}.UseSkill(withCurrentChatID(context.Background(), tgChat), "remotion-best-practices")
+	if err != nil || !strings.Contains(out, "DEPLOY-INSTRUCTIONS") {
+		t.Fatalf("UseSkill after global install = %q, %v", out, err)
+	}
+	if got := a.GetChatActiveSkills(tgChat); len(got) != 1 || got[0] != "remotion-best-practices" {
+		t.Fatalf("tgChat active skills = %v", got)
+	}
+	if got := a.GetChatActiveSkills(plainChat); len(got) != 0 {
+		t.Fatalf("plainChat inherited skill from tgChat: %v", got)
+	}
+
+	// /skill commands through SendMessageStreamToAsAgent & SendMessageStreamTo work too (Telegram/WhatsApp/Flutter).
+	ch := a.SendMessageStreamToAsAgent(context.Background(), tgChat, "/skill")
+	var tgList strings.Builder
+	for c := range ch {
+		tgList.WriteString(c.Content)
+	}
+	if !strings.Contains(tgList.String(), "remotion-best-practices") || !strings.Contains(tgList.String(), "active in this chat") {
+		t.Fatalf("SendMessageStreamToAsAgent /skill output = %q", tgList.String())
+	}
+
+	ch2 := a.SendMessageStreamTo(context.Background(), plainChat, "/skill:on remotion-best-practices")
+	var plainOut strings.Builder
+	for c := range ch2 {
+		plainOut.WriteString(c.Content)
+	}
+	if !strings.Contains(plainOut.String(), "✅") {
+		t.Fatalf("SendMessageStreamTo /skill:on output = %q", plainOut.String())
 	}
 }

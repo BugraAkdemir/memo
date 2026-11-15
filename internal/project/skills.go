@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"memo/internal/fileutil"
@@ -152,7 +153,7 @@ func (m *Manager) rootForSkillsLocked(projectPath string) (string, *Info, error)
 	return root, info, nil
 }
 
-// InstallOptions configure InstallSkill.
+// InstallOptions configure InstallSkill and InstallSkillToDir.
 type InstallOptions struct {
 	// Parse reads a SKILL.md; required.
 	Parse SkillParser
@@ -161,17 +162,36 @@ type InstallOptions struct {
 	// BaseURL is the archive host; empty means GitHub's codeload. Tests point it
 	// at a local server.
 	BaseURL string
+	// MarkInstructionsOnly writes a `.instructions-only` marker file inside the
+	// installed skill folder before moving it into place, telling the global
+	// skill loader never to register any declared `tools:`.
+	MarkInstructionsOnly bool
 }
 
 // InstallResult says what was installed.
 type InstallResult struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
-	// Dir is the folder under .memo/skills the skill now lives in.
+	// Dir is the folder under skills where the skill now lives.
 	Dir      string `json:"dir"`
 	Source   string `json:"source"`
 	Files    int    `json:"files"`
 	HasTools bool   `json:"has_tools"`
+	// Global is true when the skill was installed into Memo's shared global
+	// skills directory rather than a project's `.memo/skills`.
+	Global bool `json:"global,omitempty"`
+}
+
+var globalSkillInstallMu sync.Mutex
+
+// InstallSkillToDir downloads a skill from GitHub into `<skillsDir>/<name>`.
+// It enforces the same archive limits, path-traversal checks, non-executable
+// permissions, and no-overwrite rule as Manager.InstallSkill.
+func InstallSkillToDir(ctx context.Context, skillsDir string, src SkillSource, opt InstallOptions) (*InstallResult, error) {
+	if strings.TrimSpace(skillsDir) == "" {
+		return nil, errors.New("project: target skills directory is required")
+	}
+	return installSkillToDir(ctx, &globalSkillInstallMu, skillsDir, src, opt)
 }
 
 // InstallSkill downloads a skill from GitHub into `<root>/.memo/skills/<name>`.
@@ -192,7 +212,13 @@ func (m *Manager) InstallSkill(ctx context.Context, projectPath string, src Skil
 	if err != nil {
 		return nil, err
 	}
+	return installSkillToDir(ctx, &m.mu, SkillsDir(root), src, opt)
+}
 
+func installSkillToDir(ctx context.Context, mu *sync.Mutex, skills string, src SkillSource, opt InstallOptions) (*InstallResult, error) {
+	if opt.Parse == nil {
+		return nil, errors.New("project: InstallSkill needs a SkillParser")
+	}
 	files, err := fetchSkillFiles(ctx, src, opt)
 	if err != nil {
 		return nil, err
@@ -207,9 +233,8 @@ func (m *Manager) InstallSkill(ctx context.Context, projectPath string, src Skil
 	if !validSkillName(meta.Name) {
 		return nil, fmt.Errorf("project: %q is not a usable skill name", meta.Name)
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	skills := SkillsDir(root)
+	mu.Lock()
+	defer mu.Unlock()
 	if err := os.MkdirAll(skills, 0o755); err != nil {
 		return nil, err
 	}
@@ -252,6 +277,12 @@ func (m *Manager) InstallSkill(ctx context.Context, projectPath string, src Skil
 			return nil, err
 		}
 		n++
+	}
+	if opt.MarkInstructionsOnly {
+		marker := filepath.Join(tmp, ".instructions-only")
+		if err := fileutil.AtomicWrite(marker, []byte("remote archive install: tools ignored\n"), 0o644); err != nil {
+			return nil, err
+		}
 	}
 	if err := os.Rename(tmp, target); err != nil {
 		return nil, err

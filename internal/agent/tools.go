@@ -287,12 +287,13 @@ func (r *ToolRegistry) registerCodePlanTool() {
 	})
 }
 
-// registerProjectSkillTool adds install_project_skill. It stays available in Code Mode: installing a skill into the
-// project the chat is working in is part of working on that project.
+// registerProjectSkillTool adds install_project_skill. Available in both Code Mode
+// (installs into .memo/skills) and general chats (desktop, web, Telegram,
+// WhatsApp — installs into Memo's global skills library).
 func (r *ToolRegistry) registerProjectSkillTool() {
 	r.Register(ToolDef{
 		Name:        "install_project_skill",
-		Description: "Installs a skill into THIS project's .memo/skills folder from a GitHub source the user gave you: owner/repo, a github.com URL, or an `npx skills add ...` command the user pasted. Call it ONLY when the user explicitly asks to install a skill and has given the source; never choose a source yourself. Nothing is executed (an npx command is only read for its source): the skill is downloaded as plain files and is used only when the user turns it on with /skill:on <name>; any tools a skill declares are ignored. If the place holds several skills, the error lists them: ask which one and call again with `--skill <name>` added to the source. The project must already be set up for Memo.",
+		Description: "Installs a skill from a GitHub source the user gave you (owner/repo, owner/repo/path, a github.com URL, or an `npx skills add ...` command): into `.memo/skills` when working in a set-up Memo project, or into Memo's global skills library so it works in normal, Telegram, and WhatsApp chats. Call it ONLY when the user explicitly asks to install a skill and has given the source; never choose a source yourself. Nothing is executed (an npx command is only read for its source): the skill is downloaded as plain files without execute permission and any tools it declares are ignored. Once installed globally, call `use_skill` to load it in the current chat (or the user can turn it on with `/skill:on <name>`). If the place holds several skills, the error lists them: ask which one and call again with `--skill <name>` added to the source.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"source":{"type":"string","description":"The user's source: owner/repo, owner/repo/path, a github.com URL, or the pasted npx command, optionally with --skill <name>"}},"required":["source"]}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.InstallProjectSkill,

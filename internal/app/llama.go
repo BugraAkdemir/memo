@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"memo/internal/logx"
 	"os"
@@ -24,15 +25,9 @@ func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) er
 	engineMode := a.cfg.Llama.EngineMode
 	a.cfgMu.RUnlock()
 
-	if err := a.llamaServer.Start(binaryPath, modelPath, ctxSize, port, gpuLayers, false, engineMode); err != nil {
+	if err := startLlamaWithCPUFallback(context.Background(), a.llamaServer, binaryPath, modelPath, ctxSize, port, gpuLayers, engineMode, 180*time.Second); err != nil {
 		noteLocalStartFail("llama", err)
 		return err
-	}
-
-	if err := a.llamaServer.WaitReady(180 * time.Second); err != nil {
-		a.llamaServer.Stop()
-		noteLocalStartFail("llama", err)
-		return fmt.Errorf("Model yükleme zaman aşımına uğradı (3 dk). (Hata: %w)", err)
 	}
 
 	newBaseURL := a.llamaServer.GetBaseURL()
@@ -48,6 +43,34 @@ func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) er
 	}
 
 	return nil
+}
+
+// startLlamaWithCPUFallback starts srv and waits for it to become ready. If
+// the initial GPU/Vulkan-enabled attempt fails during model load with a
+// GPU/Vulkan/VRAM error (for example Vulkan ErrorDeviceLost on an integrated
+// GPU when loading a large model), it retries once on host CPU (--device none)
+// before giving up.
+func startLlamaWithCPUFallback(ctx context.Context, srv *llama.Server, binaryPath, modelPath string, ctxSize, port, gpuLayers int, engineMode string, timeout time.Duration) error {
+	if err := srv.Start(binaryPath, modelPath, ctxSize, port, gpuLayers, false, engineMode); err != nil {
+		return err
+	}
+	err := srv.WaitReadyContext(ctx, timeout)
+	if err == nil {
+		return nil
+	}
+	_ = srv.Stop()
+	if ctx.Err() == nil && engineMode != "cpu" && gpuLayers != 0 && llama.IsGPUStartupFailure(srv.StartupFailureTail()) {
+		logx.Printf("llama: GPU/Vulkan model load failed — retrying on CPU (--device none)")
+		if err := srv.Start(binaryPath, modelPath, ctxSize, port, 0, false, "cpu"); err != nil {
+			return err
+		}
+		if err := srv.WaitReadyContext(ctx, timeout); err != nil {
+			_ = srv.Stop()
+			return fmt.Errorf("Model yükleme zaman aşımına uğradı (3 dk). (Hata: %w)", err)
+		}
+		return nil
+	}
+	return fmt.Errorf("Model yükleme zaman aşımına uğradı (3 dk). (Hata: %w)", err)
 }
 
 // StopLocalModel stops the running local model and reverts the API client.

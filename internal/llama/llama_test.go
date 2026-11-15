@@ -464,3 +464,47 @@ func TestFindMmprojPrefersModelSpecificDirectory(t *testing.T) {
 		t.Fatalf("got %s want %s", got, wanted)
 	}
 }
+
+func TestIsGPUStartupFailure(t *testing.T) {
+	cases := []struct {
+		name string
+		log  string
+		want bool
+	}{
+		{"empty", "", false},
+		{"vulkan device lost", "radv/amdgpu: Not enough memory for command submission.\n0.14.286.112 E ggml_vulkan: device lost on Vulkan0\n0.15.119.818 E llama_model_load: error loading model: vk::Queue::submit: ErrorDeviceLost", true},
+		{"cuda oom", "ggml_cuda: cudaMalloc failed: out of memory", true},
+		{"missing model file", "error: failed to open model file: no such file", false},
+	}
+	for _, tc := range cases {
+		if got := IsGPUStartupFailure(tc.log); got != tc.want {
+			t.Errorf("%s: IsGPUStartupFailure = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestServerStartupFailureTail(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "llama-8081.log")
+	old := "previous run ok\n"
+	if err := os.WriteFile(logPath, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv := &Server{
+		logPath:        logPath,
+		logStartOffset: int64(len(old)),
+	}
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = f.WriteString("radv/amdgpu: Not enough memory for command submission.\nE ggml_vulkan: device lost on Vulkan0\n")
+	_ = f.Close()
+
+	tail := srv.StartupFailureTail()
+	if strings.Contains(tail, "previous run ok") {
+		t.Fatalf("tail leaked earlier run: %q", tail)
+	}
+	if !IsGPUStartupFailure(tail) {
+		t.Fatalf("expected GPU failure in tail, got %q", tail)
+	}
+}

@@ -362,18 +362,7 @@ func (a *App) startAutoRouteLocal(ctx context.Context, path string, window int) 
 	cfg := a.cfg.Llama
 	a.cfgMu.RUnlock()
 	srv := llama.NewIsolatedServer(port, window)
-	if e = srv.Start(cfg.BinaryPath, path, window, port, -1, false, cfg.EngineMode); e != nil {
-		return nil, e
-	}
-	ready := make(chan error, 1)
-	go func() { ready <- srv.WaitReady(180 * time.Second) }()
-	select {
-	case e = <-ready:
-	case <-ctx.Done():
-		e = ctx.Err()
-	}
-	if e != nil {
-		_ = srv.Stop()
+	if e = startLlamaWithCPUFallback(ctx, srv, cfg.BinaryPath, path, window, port, -1, cfg.EngineMode, 180*time.Second); e != nil {
 		return nil, e
 	}
 	return srv, nil

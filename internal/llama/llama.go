@@ -3,6 +3,7 @@ package llama
 import (
 	"context"
 	"fmt"
+	"io"
 	"memo/internal/components"
 	"memo/internal/config"
 	"memo/internal/gguf"
@@ -41,8 +42,10 @@ type Server struct {
 	isolated  bool // private per-turn server; never kill/discover processes by port
 	stopping  bool
 	waitDone  chan struct{} // Closed when the process actually exits
-	portPid   int           // Last known PID for the port (fallback when cmd is nil)
-	logFile   *os.File      // llama-server's own stdout/stderr, never the REPL's
+	portPid        int           // Last known PID for the port (fallback when cmd is nil)
+	logFile        *os.File      // llama-server's own stdout/stderr, never the REPL's
+	logPath        string
+	logStartOffset int64
 
 	exitHook func(err error) // called on an exit nobody asked for (see SetExitHook)
 }
@@ -333,6 +336,12 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 		s.logFile = nil
 	}
 	logPath := config.DataPath(fmt.Sprintf("llama-%d.log", actualPort))
+	var logOffset int64
+	if st, statErr := os.Stat(logPath); statErr == nil {
+		logOffset = st.Size()
+	}
+	s.logPath = logPath
+	s.logStartOffset = logOffset
 	if f, ferr := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); ferr == nil {
 		s.logFile = f
 		s.cmd.Stdout = f
@@ -370,7 +379,7 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 	s.portPid = s.cmd.Process.Pid
 
 	logx.Printf("llama: server started (PID %d, port %d, GPU layers: %d)",
-		s.cmd.Process.Pid, s.port, s.gpu.GPULayers)
+		s.cmd.Process.Pid, s.port, actualGPU)
 
 	// Monitor process in background for unexpected exits
 	cmd, waitDone := s.cmd, s.waitDone
@@ -398,6 +407,9 @@ func (s *Server) WaitReadyContext(ctx context.Context, timeout time.Duration) er
 
 	for time.Now().Before(deadline) {
 		if !s.IsRunning() {
+			if tail := s.StartupFailureTail(); tail != "" {
+				logx.Printf("llama: startup failure output:\n%s", tailLogLines(tail, 12))
+			}
 			return fmt.Errorf("llama: server process exited during startup")
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -939,4 +951,64 @@ func findMmproj(modelPath string) string {
 		}
 	}
 	return ""
+}
+
+// StartupFailureTail returns the log output written by the most recent Start
+// attempt (up to 8 KiB), or "" if no log file was recorded.
+func (s *Server) StartupFailureTail() string {
+	s.mu.RLock()
+	path := s.logPath
+	offset := s.logStartOffset
+	s.mu.RUnlock()
+	if path == "" {
+		return ""
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	if offset > 0 {
+		if _, err := f.Seek(offset, io.SeekStart); err != nil {
+			return ""
+		}
+	}
+	b, err := io.ReadAll(io.LimitReader(f, 8192))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// IsGPUStartupFailure reports whether llama-server's startup failure output
+// indicates a GPU/Vulkan/VRAM backend error (such as Vulkan ErrorDeviceLost on
+// an integrated GPU) that can succeed on the host CPU (--device none).
+func IsGPUStartupFailure(logOutput string) bool {
+	if logOutput == "" {
+		return false
+	}
+	lower := strings.ToLower(logOutput)
+	for _, sig := range []string{
+		"ggml_vulkan",
+		"errordevicelost",
+		"vk::queue",
+		"not enough memory for command submission",
+		"cudamalloc",
+		"cuda error",
+		"hip error",
+		"out of vram",
+	} {
+		if strings.Contains(lower, sig) {
+			return true
+		}
+	}
+	return false
+}
+
+func tailLogLines(s string, maxLines int) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	if len(lines) <= maxLines {
+		return strings.Join(lines, "\n")
+	}
+	return strings.Join(lines[len(lines)-maxLines:], "\n")
 }

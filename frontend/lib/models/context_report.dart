@@ -66,6 +66,7 @@ class ContextReport {
   /// tokens gets a short prompt, room kept for the reply and tools loaded on
   /// demand.
   final bool compact;
+  final double avgTokensPerSecond;
 
   const ContextReport({
     this.provider = '',
@@ -81,6 +82,7 @@ class ContextReport {
     this.limits = const [],
     this.limitsVendor = '',
     this.compact = false,
+    this.avgTokensPerSecond = 0.0,
   });
 
   /// Tokens left before the window is full; 0 when the window is unknown.
@@ -112,6 +114,9 @@ class ContextReport {
       limits: list(j['limits'], QuotaMeter.fromJson),
       limitsVendor: _str(j['limits_vendor']),
       compact: _bool(j['compact'], false),
+      avgTokensPerSecond: j['avg_tokens_per_second'] is num
+          ? (j['avg_tokens_per_second'] as num).toDouble()
+          : 0.0,
     );
   }
 }

@@ -355,6 +355,32 @@ class ContextReportView extends StatelessWidget {
           child: Text(r.usedReal ? L10n.t('ctx_real') : L10n.t('ctx_estimated'),
               style: TextStyle(fontSize: 11.5, color: c.textDim)),
         ),
+        if (r.avgTokensPerSecond > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(
+              children: [
+                Icon(Icons.speed, size: 13, color: c.textDim),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    L10n.t('ctx_avg_speed'),
+                    style: TextStyle(fontSize: 12, color: c.textMuted),
+                  ),
+                ),
+                Text(
+                  L10n.t('msg_stats_tps', {
+                    'tps': r.avgTokensPerSecond.toStringAsFixed(2),
+                  }),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: c.textMain,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+          ),
         if (r.limits.isNotEmpty) ...[
           const SizedBox(height: 10),
           Divider(height: 1, color: c.borderSoft),

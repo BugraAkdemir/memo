@@ -56,4 +56,19 @@ void main() {
     )));
     expect(find.text(L10n.t('progress_no_news', {'s': '42'})), findsOneWidget);
   });
+
+  testWidgets('shows live tokens/sec while generating', (tester) async {
+    final start = DateTime(2026, 9, 29, 12, 0, 0);
+    final now = start.add(const Duration(seconds: 10));
+    await tester.pumpWidget(_wrap(StreamProgressLine(
+      timing: StreamTiming(startedAt: start, lastActivity: now),
+      phase: L10n.t('progress_writing'),
+      generatedChars: 400, // ~100 tokens over 10s = 10.00 t/s
+      now: () => now,
+    )));
+    expect(
+      find.text('${L10n.t('progress_writing')} · 0:10 · ${L10n.t('msg_stats_tps', {'tps': '10.00'})}'),
+      findsOneWidget,
+    );
+  });
 }

@@ -228,4 +228,11 @@ void main() {
     expect(contextRingColor(0.90, 90), MemoTheme.red);
     expect(contextRingColor(0.97, 90), MemoTheme.red);
   });
+
+  testWidgets('shows per-chat average token speed when positive', (tester) async {
+    L10n.setLocale(MemoLocale.en);
+    await _pumpView(tester, const ContextReport(window: 128000, used: 1000, avgTokensPerSecond: 14.5));
+    expect(find.text(L10n.t('ctx_avg_speed')), findsOneWidget);
+    expect(find.text(L10n.t('msg_stats_tps', {'tps': '14.50'})), findsOneWidget);
+  });
 }

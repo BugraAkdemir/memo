@@ -38,9 +38,12 @@ type ChatMessage struct {
 	// starts), while AddMessageToSession for the assistant reply happens
 	// after it — see memoryUsedCtxKey in internal/app/llm.go for how it
 	// travels between the two.
-	MemoryUsed    int    `json:"memory_used,omitempty"`
-	RouteProvider string `json:"route_provider,omitempty"`
-	RouteModel    string `json:"route_model,omitempty"`
+	MemoryUsed      int     `json:"memory_used,omitempty"`
+	RouteProvider   string  `json:"route_provider,omitempty"`
+	RouteModel      string  `json:"route_model,omitempty"`
+	Tokens          int     `json:"tokens,omitempty"`
+	DurationSecs    float64 `json:"duration_secs,omitempty"`
+	TokensPerSecond float64 `json:"tokens_per_second,omitempty"`
 }
 
 type Session struct {
@@ -734,6 +737,32 @@ func (m *Manager) SetLastMessageThinking(sessionID, thinking string) {
 	s.Messages[len(s.Messages)-1].Thinking = thinking
 	if err := m.save(s); err != nil {
 		logx.Printf("sessions: save thinking %s: %v", s.ID, err)
+	}
+}
+
+// SetLastMessageStats records generation metrics (token count, duration in
+// seconds, tokens/second) on the most recently added message in sessionID.
+// If sessionID is empty, the active session is used. No-ops when all metrics
+// are zero.
+func (m *Manager) SetLastMessageStats(sessionID string, tokens int, durationSecs, tokensPerSecond float64) {
+	if tokens <= 0 && durationSecs <= 0 && tokensPerSecond <= 0 {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if sessionID == "" {
+		sessionID = m.active
+	}
+	s := m.sessions[sessionID]
+	if s == nil || len(s.Messages) == 0 {
+		return
+	}
+	last := &s.Messages[len(s.Messages)-1]
+	last.Tokens = tokens
+	last.DurationSecs = durationSecs
+	last.TokensPerSecond = tokensPerSecond
+	if err := m.save(s); err != nil {
+		logx.Printf("sessions: save message stats %s: %v", s.ID, err)
 	}
 }
 

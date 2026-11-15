@@ -59,4 +59,7 @@ type ContextReport struct {
 	// local model under 10k tokens gets a short prompt, a reserved share for
 	// the reply and tools loaded on demand (app/compact_mode.go).
 	Compact bool `json:"compact"`
+	// AvgTokensPerSecond is the mean tokens/sec across assistant turns in this
+	// chat that recorded a positive speed (0 when none yet).
+	AvgTokensPerSecond float64 `json:"avg_tokens_per_second,omitempty"`
 }

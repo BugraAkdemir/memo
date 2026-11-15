@@ -841,6 +841,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       String fullThinking = '';
       List<AgentEvent> finalAgentEvents = [];
       int memoryUsed = 0;
+      MessageStats? finalStats;
       // Absolute path of an image this turn generated, carried on a
       // 'generated_image' marker chunk. Null on every ordinary text turn.
       String? generatedImagePath;
@@ -862,6 +863,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
         );
         await for (final chunk in stream) {
           _timingTouch();
+          if (chunk.stats != null) {
+            finalStats = chunk.stats;
+          }
           if (chunk.finishReason == 'heartbeat') continue;
           fullReply += chunk.content;
             if (chunk.content.isNotEmpty) {
@@ -909,6 +913,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           // Any chunk — the backend's periodic heartbeat included — proves
           // the turn is alive; a heartbeat carries nothing else.
           _timingTouch();
+          if (chunk.stats != null) {
+            finalStats = chunk.stats;
+          }
           if (chunk.finishReason == 'heartbeat') continue;
           // The allowance ran out / is running low: a metadata marker, never
           // reply text (see internal/models/quota_signal.go).
@@ -1060,6 +1067,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
             timestamp: timestamp,
             agentEvents: finalAgentEvents.isNotEmpty ? finalAgentEvents : null,
             memoryUsed: memoryUsed,
+            tokens: finalStats?.completionTokens ?? 0,
+            durationSecs: finalStats?.totalDuration ?? 0.0,
+            tokensPerSecond: finalStats?.tokensPerSecond ?? 0.0,
           ),
         );
       }
@@ -1165,6 +1175,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ModelRoute? modelRoute;
       String fullThinking = '';
       List<AgentEvent> finalAgentEvents = [];
+      MessageStats? finalStats;
 
       if (streamingEnabled || await _autoRouteActive(api)) {
         final stream = api.sendFileStream(
@@ -1186,6 +1197,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           ),
         )) {
           _timingTouch();
+          if (chunk.stats != null) {
+            finalStats = chunk.stats;
+          }
           if (chunk.finishReason == 'heartbeat') continue;
           // The allowance ran out / is running low: a metadata marker, never
           // reply text (see internal/models/quota_signal.go).
@@ -1310,6 +1324,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
             routeModel: modelRoute?.model ?? '',
             timestamp: DateTime.now().toIso8601String().substring(11, 19),
             agentEvents: finalAgentEvents.isNotEmpty ? finalAgentEvents : null,
+            tokens: finalStats?.completionTokens ?? 0,
+            durationSecs: finalStats?.totalDuration ?? 0.0,
+            tokensPerSecond: finalStats?.tokensPerSecond ?? 0.0,
           ),
         );
       }

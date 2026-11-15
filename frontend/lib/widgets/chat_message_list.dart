@@ -617,8 +617,10 @@ class _MessageBubbleState extends State<_MessageBubble> {
                             ),
                           if (_hovering || isUser) ...[
                             SizedBox(height: 6),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 4,
+                              crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
                                 Tooltip(
                                   message: DateTime.tryParse(widget.message.sentAt) == null
@@ -633,14 +635,35 @@ class _MessageBubbleState extends State<_MessageBubble> {
                                   ),
                                 ),
                                 if (!isUser &&
-                                    widget.message.memoryUsed > 0) ...[
-                                  SizedBox(width: 8),
+                                    widget.message.memoryUsed > 0)
                                   _MemoryUsedIndicator(
                                     count: widget.message.memoryUsed,
                                   ),
-                                ],
-                                if (_hovering && !isUser) ...[
-                                  SizedBox(width: 8),
+                                if (!isUser && widget.message.tokens > 0)
+                                  _MessageStatChip(
+                                    icon: Icons.abc_outlined,
+                                    label: L10n.t('msg_stats_tokens', {
+                                      'n': '${widget.message.tokens}',
+                                    }),
+                                  ),
+                                if (!isUser && widget.message.durationSecs > 0)
+                                  _MessageStatChip(
+                                    icon: Icons.schedule,
+                                    label: L10n.t('msg_stats_duration', {
+                                      's': widget.message.durationSecs
+                                          .toStringAsFixed(1),
+                                    }),
+                                  ),
+                                if (!isUser &&
+                                    widget.message.tokensPerSecond > 0)
+                                  _MessageStatChip(
+                                    icon: Icons.speed,
+                                    label: L10n.t('msg_stats_tps', {
+                                      'tps': widget.message.tokensPerSecond
+                                          .toStringAsFixed(2),
+                                    }),
+                                  ),
+                                if (_hovering && !isUser)
                                   GestureDetector(
                                     onTap: () async {
                                       final ok = await copyToClipboard(
@@ -664,7 +687,6 @@ class _MessageBubbleState extends State<_MessageBubble> {
                                       color: MemoTheme.of(context).textDim,
                                     ),
                                   ),
-                                ],
                               ],
                             ),
                           ],
@@ -816,6 +838,8 @@ class _StreamingBubbleState extends State<_StreamingBubble> {
                       if (widget.timing != null)
                         StreamProgressLine(
                           timing: widget.timing!,
+                          generatedChars:
+                              widget.content.length + widget.thinking.length,
                           phase: streamPhaseLabel(
                             events: widget.agentEvents,
                             statusText: widget.statusText,
@@ -1125,6 +1149,26 @@ class _MemoryUsedIndicator extends StatelessWidget {
           Text('$count', style: TextStyle(fontSize: 10, color: color)),
         ],
       ),
+    );
+  }
+}
+
+class _MessageStatChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _MessageStatChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = MemoTheme.of(context).textDim;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 3),
+        Text(label, style: TextStyle(fontSize: 10, color: color)),
+      ],
     );
   }
 }

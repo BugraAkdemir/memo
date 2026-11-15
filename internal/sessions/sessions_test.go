@@ -690,6 +690,30 @@ func TestSetLastMessageThinking_NoOpsOnEmpty(t *testing.T) {
 	}
 }
 
+func TestSetLastMessageStats(t *testing.T) {
+	dir := t.TempDir()
+	m, err := NewManager(dir)
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+	id := m.NewChat()
+	m.AddMessageToSession(id, "user", "hi", "", "")
+	m.AddMessageToSession(id, "assistant", "hello there", "", "")
+	m.SetLastMessageStats(id, 97, 9.6, 10.13)
+
+	m2, err := NewManager(dir)
+	if err != nil {
+		t.Fatalf("reload NewManager() error = %v", err)
+	}
+	msgs := m2.GetActiveMessagesForSession(id)
+	if len(msgs) != 2 {
+		t.Fatalf("len(msgs) = %d, want 2", len(msgs))
+	}
+	if msgs[1].Tokens != 97 || msgs[1].DurationSecs != 9.6 || msgs[1].TokensPerSecond != 10.13 {
+		t.Errorf("got stats (%d, %v, %v), want (97, 9.6, 10.13)", msgs[1].Tokens, msgs[1].DurationSecs, msgs[1].TokensPerSecond)
+	}
+}
+
 func TestCodeMode_RoundTripsAndDefaultsNil(t *testing.T) {
 	dir := t.TempDir()
 	m, _ := NewManager(dir)

@@ -240,6 +240,20 @@ func (a *App) ContextReport(chatID string) models.ContextReport {
 		Limits:             []models.QuotaMeter{},
 	}
 
+	if sm := a.getSessionManager(); sm != nil && chatID != "" {
+		var sumTps float64
+		var countTps int
+		for _, m := range sm.GetActiveMessagesForSession(chatID) {
+			if m.Role == "assistant" && m.TokensPerSecond > 0 {
+				sumTps += m.TokensPerSecond
+				countTps++
+			}
+		}
+		if countTps > 0 {
+			rep.AvgTokensPerSecond = sumTps / float64(countTps)
+		}
+	}
+
 	a.ctxState.mu.Lock()
 	snap, haveSnap := a.ctxState.snaps[chatID]
 	use, haveUse := a.ctxState.usage[chatID]

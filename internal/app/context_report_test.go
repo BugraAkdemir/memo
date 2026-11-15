@@ -6,6 +6,7 @@ import (
 	"memo/internal/api"
 	"memo/internal/cliproxy"
 	"memo/internal/config"
+	"memo/internal/sessions"
 )
 
 func gaugeApp() *App {
@@ -108,5 +109,36 @@ func TestQuotaMeters_OnePerWindowOrTheSingleFigure(t *testing.T) {
 	one := quotaMeters(cliproxy.Quota{Remaining: 0.456, ResetAt: "x"})
 	if len(one) != 1 || one[0].RemainingPercent != 46 || one[0].Label != "" {
 		t.Errorf("single figure: %+v", one)
+	}
+}
+
+func TestContextReport_AvgTokensPerSecondPerChat(t *testing.T) {
+	a := gaugeApp()
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+	a.sessions = sm
+
+	c1 := sm.NewChat()
+	sm.AddMessageToSession(c1, "user", "q1", "", "")
+	sm.AddMessageToSession(c1, "assistant", "a1", "", "")
+	sm.SetLastMessageStats(c1, 100, 10, 10.0)
+	sm.AddMessageToSession(c1, "user", "q2", "", "")
+	sm.AddMessageToSession(c1, "assistant", "a2", "", "")
+	sm.SetLastMessageStats(c1, 200, 10, 20.0)
+
+	c2 := sm.NewChat()
+	sm.AddMessageToSession(c2, "user", "q3", "", "")
+	sm.AddMessageToSession(c2, "assistant", "a3", "", "")
+	sm.SetLastMessageStats(c2, 500, 5, 100.0)
+
+	rep1 := a.ContextReport(c1)
+	if rep1.AvgTokensPerSecond != 15.0 {
+		t.Errorf("c1 AvgTokensPerSecond = %v, want 15.0", rep1.AvgTokensPerSecond)
+	}
+	rep2 := a.ContextReport(c2)
+	if rep2.AvgTokensPerSecond != 100.0 {
+		t.Errorf("c2 AvgTokensPerSecond = %v, want 100.0", rep2.AvgTokensPerSecond)
 	}
 }

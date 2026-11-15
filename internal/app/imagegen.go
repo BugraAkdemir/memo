@@ -195,8 +195,8 @@ func (a *App) streamImageGeneration(ctx context.Context, gen provider.ImageGener
 	if resp.Usage != nil {
 		completionTokens = resp.Usage.CompletionTokens
 	}
-	a.finishStream(withGeneratedImage(ctx, path), start, completionTokens, "stop", "", userMsg, sessionID, &meta)
-	trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
+	st := a.finishStream(withGeneratedImage(ctx, path), start, completionTokens, "stop", "", userMsg, sessionID, &meta)
+	trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop", Stats: st})
 }
 
 // imageInputsFromMessages collects the pictures the user attached to this turn

@@ -798,7 +798,7 @@ func TestDrainAgentStreamPersistsAndForwardsThinking(t *testing.T) {
 			}
 			close(ch)
 			out := make(chan api.StreamChunk, 8)
-			_, chainable := a.drainAgentStream(context.Background(), ch, out, time.Now(), "question", id, &usageMeta{}, nil)
+			_, chainable, _ := a.drainAgentStream(context.Background(), ch, out, time.Now(), "question", id, &usageMeta{}, nil)
 			close(out)
 			var thinking, reply string
 			for c := range out {

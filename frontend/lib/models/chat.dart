@@ -15,6 +15,9 @@ class ChatMessage {
   final int memoryUsed;
   final String routeProvider;
   final String routeModel;
+  final int tokens;
+  final double durationSecs;
+  final double tokensPerSecond;
 
   const ChatMessage({
     required this.role,
@@ -28,6 +31,9 @@ class ChatMessage {
     this.memoryUsed = 0,
     this.routeProvider = '',
     this.routeModel = '',
+    this.tokens = 0,
+    this.durationSecs = 0.0,
+    this.tokensPerSecond = 0.0,
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
@@ -42,6 +48,9 @@ class ChatMessage {
         memoryUsed: json['memory_used'] as int? ?? 0,
     routeProvider: json['route_provider'] as String? ?? '',
     routeModel: json['route_model'] as String? ?? '',
+    tokens: (json['tokens'] as num?)?.toInt() ?? 0,
+    durationSecs: (json['duration_secs'] as num?)?.toDouble() ?? 0.0,
+    tokensPerSecond: (json['tokens_per_second'] as num?)?.toDouble() ?? 0.0,
   );
 
   Map<String, dynamic> toJson() => {
@@ -56,6 +65,9 @@ class ChatMessage {
         if (memoryUsed > 0) 'memory_used': memoryUsed,
     if (routeModel.isNotEmpty) 'route_model': routeModel,
     if (routeProvider.isNotEmpty) 'route_provider': routeProvider,
+    if (tokens > 0) 'tokens': tokens,
+    if (durationSecs > 0) 'duration_secs': durationSecs,
+    if (tokensPerSecond > 0) 'tokens_per_second': tokensPerSecond,
       };
 
   bool get isUser => role == 'user';
@@ -65,22 +77,46 @@ class ChatMessage {
   bool get hasThinking => thinking != null && thinking!.isNotEmpty;
 }
 
+/// Generation metrics attached to the terminal SSE chunk (mirrors Go `api.MessageStats`).
+class MessageStats {
+  final int completionTokens;
+  final double totalDuration;
+  final double tokensPerSecond;
+
+  const MessageStats({
+    this.completionTokens = 0,
+    this.totalDuration = 0.0,
+    this.tokensPerSecond = 0.0,
+  });
+
+  factory MessageStats.fromJson(Map<String, dynamic> json) => MessageStats(
+        completionTokens: (json['completion_tokens'] as num?)?.toInt() ?? 0,
+        totalDuration: (json['total_duration'] as num?)?.toDouble() ?? 0.0,
+        tokensPerSecond: (json['tokens_per_second'] as num?)?.toDouble() ?? 0.0,
+      );
+}
+
 /// A single chunk from the SSE stream, may contain content and/or thinking.
 class StreamChunk {
   final String content;
   final String? thinking;
   final String? finishReason;
+  final MessageStats? stats;
 
   const StreamChunk({
     required this.content,
     this.thinking,
     this.finishReason,
+    this.stats,
   });
 
   factory StreamChunk.fromJson(Map<String, dynamic> json) => StreamChunk(
         content: json['content'] as String? ?? '',
         thinking: json['thinking'] as String?,
         finishReason: json['finish_reason'] as String?,
+        stats: json['stats'] is Map<String, dynamic>
+            ? MessageStats.fromJson(json['stats'] as Map<String, dynamic>)
+            : null,
       );
 }
 

@@ -83,11 +83,13 @@ class StreamProgressLine extends StatefulWidget {
     super.key,
     required this.timing,
     required this.phase,
+    this.generatedChars = 0,
     this.now,
   });
 
   final StreamTiming timing;
   final String phase;
+  final int generatedChars;
 
   /// Clock override for tests.
   final DateTime Function()? now;
@@ -120,6 +122,13 @@ class _StreamProgressLineState extends State<StreamProgressLine> {
     final elapsed = now.difference(widget.timing.startedAt);
     final silence = now.difference(widget.timing.lastActivity);
     final stale = silence >= kStreamSilenceWarning;
+    final elapsedClamped = elapsed.isNegative ? Duration.zero : elapsed;
+    final liveTps = (widget.generatedChars > 0 && elapsedClamped.inMilliseconds >= 500)
+        ? (widget.generatedChars / 4.0) / (elapsedClamped.inMilliseconds / 1000.0)
+        : 0.0;
+    final tpsSuffix = liveTps > 0
+        ? ' · ${L10n.t('msg_stats_tps', {'tps': liveTps.toStringAsFixed(2)})}'
+        : '';
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Column(
@@ -140,7 +149,7 @@ class _StreamProgressLineState extends State<StreamProgressLine> {
               const SizedBox(width: 8),
               Flexible(
                 child: Text(
-                  '${widget.phase} · ${formatElapsed(elapsed.isNegative ? Duration.zero : elapsed)}',
+                  '${widget.phase} · ${formatElapsed(elapsedClamped)}$tpsSuffix',
                   style: TextStyle(
                     fontSize: 12,
                     fontStyle: FontStyle.italic,

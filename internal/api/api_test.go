@@ -378,3 +378,32 @@ func TestChatCompletionStream_ErrorSurfacesCleanMessage(t *testing.T) {
 		t.Errorf("error lost the actual message: %v", err)
 	}
 }
+
+func TestProcessSSEStreamReasoningContent(t *testing.T) {
+	input := strings.Join([]string{
+		`data: {"choices":[{"delta":{"reasoning_content":"adım 1 "}}]}`,
+		`data: {"choices":[{"delta":{"reasoning":"adım 2"}}]}`,
+		`data: {"choices":[{"delta":{"content":"cevap"},"finish_reason":"stop"}]}`,
+		`data: [DONE]`,
+	}, "\n\n") + "\n\n"
+	body := io.NopCloser(strings.NewReader(input))
+	ch := make(chan StreamChunk, 10)
+	go processSSEStream(context.Background(), body, ch)
+
+	var chunks []StreamChunk
+	for c := range ch {
+		chunks = append(chunks, c)
+	}
+	if len(chunks) < 3 {
+		t.Fatalf("got %d chunks, want >= 3", len(chunks))
+	}
+	if chunks[0].Thinking != "adım 1 " || chunks[0].Content != "" {
+		t.Errorf("chunk[0] = %+v, want Thinking=%q", chunks[0], "adım 1 ")
+	}
+	if chunks[1].Thinking != "adım 2" || chunks[1].Content != "" {
+		t.Errorf("chunk[1] = %+v, want Thinking=%q", chunks[1], "adım 2")
+	}
+	if chunks[2].Content != "cevap" || !chunks[2].Done {
+		t.Errorf("chunk[2] = %+v, want Content=%q Done=true", chunks[2], "cevap")
+	}
+}

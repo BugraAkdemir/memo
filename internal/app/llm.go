@@ -546,7 +546,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			return
 		}
 
-		finishReason, chainable := a.drainAgentStream(turnCtx, streamCh, outCh, start, userMsg, sessionID, &usageMetaVal, agentEvents)
+		finishReason, chainable, stats := a.drainAgentStream(turnCtx, streamCh, outCh, start, userMsg, sessionID, &usageMetaVal, agentEvents)
 		if !chainable {
 			return // drainAgentStream already sent its own terminal Done (or error+Done)
 		}
@@ -558,7 +558,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 		// turn (never a Self-Driving worker turn — task lists are a
 		// completely separate orchestration this feature doesn't touch).
 		if !codeMode || subMode != "plan" || !planSaved.Load() || taskListID != "" {
-			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: finishReason})
+			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: finishReason, Stats: stats})
 			return
 		}
 
@@ -593,7 +593,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 					logx.Printf("CODE-SUBMODE: SetAwaitingPlanDecision(%s): %v", sessionID, err)
 				}
 			}
-			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: finishReason})
+			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: finishReason, Stats: stats})
 			return
 		}
 
@@ -629,9 +629,9 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 			return
 		}
-		buildFinishReason, buildChainable := a.drainAgentStream(turnCtx, buildStreamCh, outCh, start, userMsg, sessionID, &usageMetaVal, agentEvents)
+		buildFinishReason, buildChainable, buildStats := a.drainAgentStream(turnCtx, buildStreamCh, outCh, start, userMsg, sessionID, &usageMetaVal, agentEvents)
 		if buildChainable {
-			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: buildFinishReason})
+			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: buildFinishReason, Stats: buildStats})
 		}
 	}()
 
@@ -767,7 +767,7 @@ func (l *agentEventLog) snapshot() []interface{} {
 // other caller (callWebSearchAgentStream, and this file's own tests) simply
 // sends Done itself when chainable is true — see callWebSearchAgentStream's
 // call site for the minimal pattern.
-func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.StreamChunk, outCh chan<- api.StreamChunk, start time.Time, userMsg, sessionID string, usageMetaVal *usageMeta, agentEvents *agentEventLog) (finishReason string, chainable bool) {
+func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.StreamChunk, outCh chan<- api.StreamChunk, start time.Time, userMsg, sessionID string, usageMetaVal *usageMeta, agentEvents *agentEventLog) (finishReason string, chainable bool, stats *api.MessageStats) {
 	var fullReply strings.Builder
 	var fullThinking strings.Builder
 	// The agent pipeline attaches a real cross-iteration token accounting to
@@ -808,7 +808,7 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 			}
 			a.persistInterruptedTurn(withThinking(ctx, fullThinking.String()), start, completionTokens, partial, userMsg, sessionID, usageMetaVal, events)
 			trySend(ctx, outCh, api.StreamChunk{Error: a.stopMarker(), Done: true})
-			return "", false
+			return "", false, nil
 		}
 		if !ok {
 			break
@@ -822,7 +822,7 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 			a.noteProviderFailure(usageMetaVal.Provider, usageMetaVal.Model, chunk.Error)
 			a.recordFailedTurn(userMsg, fullReply.String(), "⚠️ "+chunk.Error, sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
-			return "", false
+			return "", false, nil
 		}
 
 		if chunk.Content != "" {
@@ -831,18 +831,18 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 		}
 
 		if chunk.Done {
-			a.finishStream(withThinking(ctx, fullThinking.String()), start, completionTokens, chunk.FinishReason, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
-			return chunk.FinishReason, true
+			st := a.finishStream(withThinking(ctx, fullThinking.String()), start, completionTokens, chunk.FinishReason, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
+			return chunk.FinishReason, true, st
 		}
 	}
 
 	if fullReply.Len() > 0 {
-		a.finishStream(withThinking(ctx, fullThinking.String()), start, completionTokens, "stop", fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
-		return "stop", true
+		st := a.finishStream(withThinking(ctx, fullThinking.String()), start, completionTokens, "stop", fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
+		return "stop", true, st
 	}
 	a.recordStreamError(userMsg, a.t("⚠️ Agent boş yanıt döndürdü", "⚠️ Agent returned an empty response"), sessionID)
 	trySend(ctx, outCh, api.StreamChunk{Error: a.t("⚠️ Agent boş yanıt döndürdü", "⚠️ Agent returned an empty response"), Done: true})
-	return "", false
+	return "", false, nil
 }
 
 // callWebSearchAgentStream runs a scoped (web_search + fetch_page only)
@@ -926,8 +926,8 @@ func (a *App) callWebSearchAgentStream(ctx context.Context, messages []api.Messa
 		// This call path never chains an extra pass (that's Code Mode "plan"
 		// sub-mode-only, in callAgentStream) — a "normal stop" here always
 		// just means send Done immediately, same as every other exit.
-		if finishReason, chainable := a.drainAgentStream(ctx, streamCh, outCh, start, userMsg, sessionID, &usageMetaVal, agentEvents); chainable {
-			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: finishReason})
+		if finishReason, chainable, stats := a.drainAgentStream(ctx, streamCh, outCh, start, userMsg, sessionID, &usageMetaVal, agentEvents); chainable {
+			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: finishReason, Stats: stats})
 		}
 	}()
 
@@ -1180,8 +1180,8 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 		agentEventsMu.Lock()
 		finalEvents := agentEvents
 		agentEventsMu.Unlock()
-		a.finishStream(ctx, start, 0, "stop", finalContent, userMsg, sessionID, &usageMetaVal, finalEvents)
-		trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
+		st := a.finishStream(ctx, start, 0, "stop", finalContent, userMsg, sessionID, &usageMetaVal, finalEvents)
+		trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop", Stats: st})
 	}()
 
 	return outCh
@@ -1324,8 +1324,8 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 			tokenCount := estimateContentTokens(finalContent)
 
-			a.finishStream(ctx, start, tokenCount, "stop", finalContent, userPrompt, sessionID, &usageMetaVal)
-			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
+			st := a.finishStream(ctx, start, tokenCount, "stop", finalContent, userPrompt, sessionID, &usageMetaVal)
+			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop", Stats: st})
 		}()
 		return outCh
 	}
@@ -1504,8 +1504,8 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 						trySend(providerCtx, outCh, api.StreamChunk{Error: a.emptyReplyMsg(), Done: true})
 						return
 					}
-					a.finishStream(withThinking(ctx, fullThinking.String()), start, completionCount(providerCompletionTokens, tokenCount), chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
-					trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
+					st := a.finishStream(withThinking(ctx, fullThinking.String()), start, completionCount(providerCompletionTokens, tokenCount), chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
+					trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason, Stats: st})
 					return
 				}
 			}
@@ -1519,8 +1519,8 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				return
 			}
 			if fullReply.Len() > 0 {
-				a.finishStream(withThinking(ctx, fullThinking.String()), start, completionCount(providerCompletionTokens, tokenCount), "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
-				trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
+				st := a.finishStream(withThinking(ctx, fullThinking.String()), start, completionCount(providerCompletionTokens, tokenCount), "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
+				trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop", Stats: st})
 			} else {
 				errMsg := "⚠️ Provider returned empty response"
 				if hint := a.localModelHint(); hint != "" {
@@ -1652,7 +1652,8 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 					trySend(streamCtx, outCh, api.StreamChunk{Error: a.emptyReplyMsg(), Done: true})
 					return
 				}
-				a.finishStream(withThinking(ctx, fullThinking.String()), start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
+				st := a.finishStream(withThinking(ctx, fullThinking.String()), start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
+				chunk.Stats = st
 				trySend(streamCtx, outCh, chunk)
 				return
 			}
@@ -1665,8 +1666,8 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		}
 		if fullReply.Len() > 0 {
 			logx.Printf("LATENCY llm.stream_closed total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
-			a.finishStream(withThinking(ctx, fullThinking.String()), start, tokenCount, "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
-			trySend(streamCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
+			st := a.finishStream(withThinking(ctx, fullThinking.String()), start, tokenCount, "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
+			trySend(streamCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop", Stats: st})
 		} else {
 			logx.Printf("LATENCY llm.stream_empty total_ms=%d generation_ms=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds())
 			a.recordStreamError(userMsg, a.emptyReplyMsg(), sessionID)
@@ -1949,7 +1950,7 @@ func withThinking(ctx context.Context, thinking string) context.Context {
 	return context.WithValue(ctx, thinkingCtxKey{}, thinking)
 }
 
-func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int, finishReason, reply, userMsg, sessionID string, meta *usageMeta, agentEvents ...[]interface{}) {
+func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int, finishReason, reply, userMsg, sessionID string, meta *usageMeta, agentEvents ...[]interface{}) *api.MessageStats {
 	if r := subscriptionTextRouteFromCtx(ctx); r != nil && r.auto && meta != nil {
 		meta.Provider, meta.Model = routeProvider(r), routeModel(r)
 		a.ctxState.mu.Lock()
@@ -1963,9 +1964,13 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 		a.ctxState.mu.Unlock()
 	}
 	duration := time.Since(start).Seconds()
+	completionTokens := tokenCount
+	if completionTokens == 0 {
+		completionTokens = estimateContentTokens(reply)
+	}
 	tps := 0.0
-	if duration > 0 && tokenCount > 0 {
-		tps = float64(tokenCount) / duration
+	if duration > 0 && completionTokens > 0 {
+		tps = float64(completionTokens) / duration
 	}
 	// The skills this turn called go on the saved message too.
 	agentEvents = withSkillEvents(ctx, agentEvents)
@@ -1978,14 +1983,15 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 		agentEvents = [][]interface{}{events}
 	}
 
+	stats := &api.MessageStats{
+		TokensPerSecond:  tps,
+		CompletionTokens: completionTokens,
+		TotalDuration:    duration,
+		StopReason:       finishReason,
+	}
 	a.emitEvent("chat:done", api.StreamChunk{
-		Done: true,
-		Stats: &api.MessageStats{
-			TokensPerSecond:  tps,
-			CompletionTokens: tokenCount,
-			TotalDuration:    duration,
-			StopReason:       finishReason,
-		},
+		Done:  true,
+		Stats: stats,
 	})
 
 	// What this turn cost in context, for the gauge — in memory only, so it is
@@ -2005,10 +2011,12 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 	a.incognitoMu.RLock()
 	incog := a.isIncognito
 	a.incognitoMu.RUnlock()
-	// Code Mode suppresses every Memo-initiated follow-up LLM call: title
-	// generation, mood update, personal-memory save + fact extraction, and
-	// the ambient-nudge surfaced check. The reply itself is still persisted.
+	// Code Mode and Minimal Mode both suppress every Memo-initiated follow-up
+	// LLM call: title generation, mood update, personal-memory save + fact
+	// extraction (already gated on memory enabled / !code), and ambient-nudge
+	// checks. The reply itself is still persisted.
 	code := codeModeActive(ctx)
+	minimal := a.identity != nil && a.identity.GetMinimalMode()
 	// Non-empty only on an image-generation turn (see imagegen.go) — every
 	// chat path leaves it empty and persists no image, exactly as before.
 	genImage := generatedImageFromContext(ctx)
@@ -2029,14 +2037,16 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 				if thinking, ok := ctx.Value(thinkingCtxKey{}).(string); ok && thinking != "" {
 					sm.SetLastMessageThinking(sessionID, thinking)
 				}
-				if !code && len(sm.GetActiveMessagesForSession(sessionID)) == 2 {
+				sm.SetLastMessageStats(sessionID, completionTokens, duration, tps)
+				if !code && !minimal && len(sm.GetActiveMessagesForSession(sessionID)) == 2 {
 					a.goBackground("generateChatTitleForSession", func() { a.generateChatTitleForSession(sessionID) })
-				} else if code && len(sm.GetActiveMessagesForSession(sessionID)) == 2 {
+				} else if (code || minimal) && len(sm.GetActiveMessagesForSession(sessionID)) == 2 {
 					a.nameCodeChat(sessionID) // no LLM call: see nameCodeChat
 				}
 			} else {
 				sm.AddMessage("assistant", reply, genImage, "", agentEvents...)
-				if !code && len(sm.GetActiveMessages()) == 2 {
+				sm.SetLastMessageStats("", completionTokens, duration, tps)
+				if !code && !minimal && len(sm.GetActiveMessages()) == 2 {
 					a.goBackground("GenerateChatTitle", func() { a.GenerateChatTitle() })
 				}
 			}
@@ -2052,24 +2062,11 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 		}
 		// Mood is shaped by the person's own conversations; a project chat
 		// neither reads nor feeds it.
-		if !code && a.mood != nil && a.mood.Enabled() && !a.isProjectChat(gaugeChat) {
+		if !code && !minimal && a.mood != nil && a.mood.Enabled() && !a.isProjectChat(gaugeChat) {
 			goRecover("updateMoodAsync", func() { a.updateMoodAsync(userMsg) })
 		}
 		if meta != nil {
-			// tokenCount is 0 when the provider reported no usage (some local
-			// models, passthrough providers) — fall back to estimating from the
-			// saved reply so those turns still show up in usage stats. When the
-			// agent pipeline did report usage, drainAgentStream passes the real
-			// completion count through and this fallback is skipped.
-			completionTokens := tokenCount
-			statsTps := tps
-			if completionTokens == 0 {
-				completionTokens = estimateContentTokens(reply)
-				if duration > 0 && completionTokens > 0 {
-					statsTps = float64(completionTokens) / duration
-				}
-			}
-			goRecover("recordUsageEvent", func() { a.recordUsageEvent(*meta, completionTokens, duration, statsTps) })
+			goRecover("recordUsageEvent", func() { a.recordUsageEvent(*meta, completionTokens, duration, tps) })
 		}
 		// Captured synchronously here, not inside the goroutine — see
 		// takeNudgedPattern's doc comment for why that ordering matters.
@@ -2081,6 +2078,7 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 		a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("assistant", reply))
 		a.incognitoMu.Unlock()
 	}
+	return stats
 }
 
 // callLLM is the shared single-completion helper behind every background/

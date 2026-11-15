@@ -652,6 +652,26 @@ func TestSendMessage_WebSearchOnMinimalModeOn_NoToolDefinitions(t *testing.T) {
 	}
 }
 
+func TestSendMessage_AgentOnMinimalModeOn_NoToolDefinitionsOrTitleCall(t *testing.T) {
+	reqs := &capturedRequests{}
+	a := newSendMessageTestApp(t, reqs)
+	a.agentEnabled = true
+	a.identity.SetMinimalMode(true)
+
+	reply := a.SendMessage("naber")
+	a.waitBackground(2 * time.Second)
+
+	if reqs.containsAny(`"tools"`) {
+		t.Fatalf("agent on but Minimal Mode on: outbound request unexpectedly carried tool definitions. requests=%s", reqs)
+	}
+	if reqs.containsAny("generate a very short chat title") {
+		t.Fatalf("Minimal Mode on: unexpected background chat-title LLM call. requests=%s", reqs)
+	}
+	if reply != "fake agent reply" {
+		t.Fatalf("SendMessage() = %q, want %q", reply, "fake agent reply")
+	}
+}
+
 // TestCallWebSearchAgentStream_UsesResolvedRouterNotStaleSyncedOne is the
 // regression test for the P1 finding that callWebSearchAgentStream called
 // a.webSearchExecutor.SyncRouter(agentRouter) followed by a separate

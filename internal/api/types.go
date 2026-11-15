@@ -117,8 +117,10 @@ type ChunkChoice struct {
 }
 
 type MessageDelta struct {
-	Role    string `json:"role,omitempty"`
-	Content string `json:"content,omitempty"`
+	Role             string `json:"role,omitempty"`
+	Content          string `json:"content,omitempty"`
+	ReasoningContent string `json:"reasoning_content,omitempty"`
+	Reasoning        string `json:"reasoning,omitempty"`
 }
 
 // --- Embedding ---

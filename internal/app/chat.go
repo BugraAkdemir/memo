@@ -331,8 +331,9 @@ func (a *App) routeStreamInner(ctx context.Context, messages []api.Message, user
 		}
 	}
 
+	minimal := a.identity != nil && a.identity.GetMinimalMode()
 	a.agentMu.RLock()
-	agentActive := a.agentEnabled
+	agentActive := a.agentEnabled && !minimal
 	a.agentMu.RUnlock()
 	if forceAgent || code {
 		// Code Mode is a coding preset — the tool loop is the whole point.
@@ -374,7 +375,10 @@ func (a *App) routeStreamInner(ctx context.Context, messages []api.Message, user
 		agentActive = a.decisionAllows(ctx, agentDecisionPrompt, agentDecisionInput(messages, userMsg))
 	}
 
-	channelTools := a.communicationToolNames(ctx)
+	var channelTools []string
+	if !minimal {
+		channelTools = a.communicationToolNames(ctx)
+	}
 	if !code && (agentActive || len(channelTools) > 0) {
 		for i, msg := range messages {
 			if msg.Role == "system" {

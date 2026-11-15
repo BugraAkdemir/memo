@@ -110,6 +110,13 @@ func processSSEStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamC
 
 		choice := chunk.Choices[0]
 		reg, think := tp.process(choice.Delta.Content)
+		reasoning := choice.Delta.ReasoningContent
+		if reasoning == "" {
+			reasoning = choice.Delta.Reasoning
+		}
+		if reasoning != "" {
+			think = reasoning + think
+		}
 		sc := StreamChunk{
 			Content:  reg,
 			Thinking: think,

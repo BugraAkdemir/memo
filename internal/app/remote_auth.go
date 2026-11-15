@@ -588,6 +588,19 @@ func (a *App) BootstrapTokenAuth(deviceName string) (string, error) {
 	return a.CreateRemoteDevice(deviceName)
 }
 
+// DeclineSetup marks the first-run remote-access setup prompt as dismissed
+// ("local device only") so NeedsSetup() stays false across restarts and
+// client state resets. Safe to call repeatedly.
+func (a *App) DeclineSetup() error {
+	a.remoteAccountsMu.Lock()
+	defer a.remoteAccountsMu.Unlock()
+	if a.cfg.RemoteAccess.SetupBootstrapped {
+		return nil
+	}
+	a.cfg.RemoteAccess.SetupBootstrapped = true
+	return config.Save(a.cfg)
+}
+
 // ListAccounts returns every account's metadata (never the password hash
 // — see AccountInfo). Returns interface{} for the same FullBridge
 // decoupling reason as ListRemoteDevices.

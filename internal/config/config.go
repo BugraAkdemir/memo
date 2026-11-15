@@ -294,7 +294,9 @@ type LiveModeConfig struct {
 // fact instead, checked by every client regardless of which origin/browser
 // it's using.
 type OnboardingConfig struct {
-	Completed bool `yaml:"completed" json:"completed"`
+	Completed     bool `yaml:"completed" json:"completed"`
+	TourSeen      bool `yaml:"tour_seen" json:"tour_seen"`
+	LaunchpadSeen bool `yaml:"launchpad_seen" json:"launchpad_seen"`
 }
 
 // LearningConfig controls the learning system's model routing. When

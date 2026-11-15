@@ -227,10 +227,13 @@ type FullBridge interface {
 	// bootstrap) — see config.OnboardingConfig's doc comment.
 	GetOnboardingComplete() bool
 	SetOnboardingComplete(completed bool) error
+	GetOnboardingState() (completed, tourSeen, launchpadSeen bool)
+	SetOnboardingState(completed, tourSeen, launchpadSeen *bool) error
 
 	// Multi-account / role model (Faz 5.1, yapacam.md) — see
 	// internal/app/remote_auth.go's doc comments for the full design.
 	NeedsSetup() bool
+	DeclineSetup() error
 	// InstallID identifies THIS install so a client can tell that the
 	// backend it stored state against was wiped and reinstalled (or that
 	// it is now pointed at a different Memo). Empty when unavailable —

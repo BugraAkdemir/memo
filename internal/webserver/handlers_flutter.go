@@ -801,16 +801,23 @@ func (s *Server) handleOnboarding(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, map[string]bool{"completed": s.fullBridge.GetOnboardingComplete()})
+		completed, tourSeen, launchpadSeen := s.fullBridge.GetOnboardingState()
+		writeJSON(w, map[string]bool{
+			"completed":      completed,
+			"tour_seen":      tourSeen,
+			"launchpad_seen": launchpadSeen,
+		})
 	case http.MethodPut:
 		var req struct {
-			Completed bool `json:"completed"`
+			Completed     *bool `json:"completed"`
+			TourSeen      *bool `json:"tour_seen"`
+			LaunchpadSeen *bool `json:"launchpad_seen"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad json", http.StatusBadRequest)
 			return
 		}
-		if err := s.fullBridge.SetOnboardingComplete(req.Completed); err != nil {
+		if err := s.fullBridge.SetOnboardingState(req.Completed, req.TourSeen, req.LaunchpadSeen); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

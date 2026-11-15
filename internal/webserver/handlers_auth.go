@@ -411,7 +411,8 @@ func hasRoutinesPerm(p config.AccountPermissions) bool { return p.Routines }
 func isSetupBootstrapPath(path string) bool {
 	return path == "/api/setup/status" || path == "/api/v1/setup/status" ||
 		path == "/api/setup/create-admin" || path == "/api/v1/setup/create-admin" ||
-		path == "/api/setup/create-device" || path == "/api/v1/setup/create-device"
+		path == "/api/setup/create-device" || path == "/api/v1/setup/create-device" ||
+		path == "/api/setup/decline" || path == "/api/v1/setup/decline"
 }
 
 // handleSetupStatus implements GET /api/setup/status — unauthenticated
@@ -510,6 +511,29 @@ func (s *Server) handleSetupCreateDevice(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, map[string]string{"token": token})
+}
+
+// handleSetupDecline implements POST /api/setup/decline — loopback-only so a
+// local user choosing "this device only" persists SetupBootstrapped=true on
+// the backend without allowing remote unauthenticated callers to dismiss setup.
+func (s *Server) handleSetupDecline(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	if !isLoopbackIP(requestIP(r)) || isForwardedRequest(r) {
+		http.Error(w, "loopback only", http.StatusForbidden)
+		return
+	}
+	if err := s.fullBridge.DeclineSetup(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
 }
 
 // handleAccounts implements GET (list) and POST (create) on /api/accounts.

@@ -184,11 +184,17 @@ class SetupCompleteNotifier extends StateNotifier<bool> {
 
   Future<void> _init() async {
     try {
-      final completed =
-          await _ref.read(apiClientProvider).getOnboardingComplete();
+      final api = _ref.read(apiClientProvider);
+      final completed = await api.getOnboardingComplete();
       if (!mounted) return;
       state = completed;
       await _prefs.setBool('memo_setup_complete', completed);
+      if (api.lastOnboardingTourSeen == true) {
+        await _ref.read(tourSeenProvider.notifier).syncFromBackend(true);
+      }
+      if (api.lastOnboardingLaunchpadSeen == true) {
+        await _ref.read(launchpadSeenProvider.notifier).syncFromBackend(true);
+      }
       if (mounted) _ref.read(onboardingCheckedProvider.notifier).state = true;
     } catch (e) {
       debugPrint('setup: onboarding init error: ${FriendlyError.describeGeneric(e)}');
@@ -240,28 +246,42 @@ class SetupCompleteNotifier extends StateNotifier<bool> {
 final launchpadSeenProvider =
     StateNotifierProvider<LaunchpadSeenNotifier, bool>((ref) {
       final prefs = ref.read(prefsProvider);
-      return LaunchpadSeenNotifier(prefs);
+      return LaunchpadSeenNotifier(prefs, ref);
     });
 
 class LaunchpadSeenNotifier extends StateNotifier<bool> {
   final SharedPreferences _prefs;
+  final Ref? _ref;
   bool _forceShow = false;
 
-  LaunchpadSeenNotifier(this._prefs)
+  LaunchpadSeenNotifier(this._prefs, [this._ref])
       : super(_prefs.getBool('memo_launchpad_seen') ?? false);
 
   bool get forceShow => _forceShow;
+
+  Future<void> syncFromBackend(bool seen) async {
+    if (!seen || state) return;
+    _forceShow = false;
+    await _prefs.setBool('memo_launchpad_seen', true);
+    state = true;
+  }
 
   Future<void> markSeen() async {
     _forceShow = false;
     await _prefs.setBool('memo_launchpad_seen', true);
     state = true;
+    try {
+      await _ref?.read(apiClientProvider).setOnboardingFlags(launchpadSeen: true);
+    } catch (_) {}
   }
 
   Future<void> reset() async {
     _forceShow = true;
     await _prefs.setBool('memo_launchpad_seen', false);
     state = false;
+    try {
+      await _ref?.read(apiClientProvider).setOnboardingFlags(launchpadSeen: false);
+    } catch (_) {}
   }
 }
 
@@ -270,23 +290,36 @@ class LaunchpadSeenNotifier extends StateNotifier<bool> {
 final tourSeenProvider =
     StateNotifierProvider<TourSeenNotifier, bool>((ref) {
       final prefs = ref.read(prefsProvider);
-      return TourSeenNotifier(prefs);
+      return TourSeenNotifier(prefs, ref);
     });
 
 class TourSeenNotifier extends StateNotifier<bool> {
   final SharedPreferences _prefs;
+  final Ref? _ref;
 
-  TourSeenNotifier(this._prefs)
+  TourSeenNotifier(this._prefs, [this._ref])
       : super(_prefs.getBool('memo_tour_seen') ?? false);
+
+  Future<void> syncFromBackend(bool seen) async {
+    if (!seen || state) return;
+    await _prefs.setBool('memo_tour_seen', true);
+    state = true;
+  }
 
   Future<void> markSeen() async {
     await _prefs.setBool('memo_tour_seen', true);
     state = true;
+    try {
+      await _ref?.read(apiClientProvider).setOnboardingFlags(tourSeen: true);
+    } catch (_) {}
   }
 
   Future<void> resetTour() async {
     await _prefs.setBool('memo_tour_seen', false);
     state = false;
+    try {
+      await _ref?.read(apiClientProvider).setOnboardingFlags(tourSeen: false);
+    } catch (_) {}
   }
 }
 

@@ -459,6 +459,33 @@ func TestHandleSetupCreateDevice_ClosesPermanentlyAfterFirstSuccess(t *testing.T
 	}
 }
 
+func TestHandleSetupDecline_LoopbackOnly(t *testing.T) {
+	stub := &swarmStubBridge{needsSetup: true}
+	s := New(stub)
+
+	remoteReq := httptest.NewRequest(http.MethodPost, "/api/setup/decline", nil)
+	remoteReq.RemoteAddr = "192.168.1.50:54321"
+	rw := httptest.NewRecorder()
+	s.handleSetupDecline(rw, remoteReq)
+	if rw.Code != http.StatusForbidden {
+		t.Fatalf("remote /api/setup/decline status = %d, want 403", rw.Code)
+	}
+	if !stub.needsSetup {
+		t.Fatal("remote caller must not flip needsSetup")
+	}
+
+	localReq := httptest.NewRequest(http.MethodPost, "/api/setup/decline", nil)
+	localReq.RemoteAddr = "127.0.0.1:54321"
+	lw := httptest.NewRecorder()
+	s.handleSetupDecline(lw, localReq)
+	if lw.Code != http.StatusOK {
+		t.Fatalf("loopback /api/setup/decline status = %d, want 200, body: %s", lw.Code, lw.Body.String())
+	}
+	if stub.needsSetup {
+		t.Fatal("expected loopback decline to flip needsSetup=false")
+	}
+}
+
 func TestHandleRemoteAccess_PutForbiddenForNonAdminSession(t *testing.T) {
 	stub := &swarmStubBridge{
 		sessionRole: func(token string) (string, bool) {

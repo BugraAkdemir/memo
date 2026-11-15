@@ -192,7 +192,13 @@ class _SetupGateViewState extends ConsumerState<_SetupGateView> {
   String? _generatedToken;
 
   Future<void> _decline() async {
+    final api = ref.read(apiClientProvider);
     final prefs = ref.read(prefsProvider);
+    try {
+      await api.setupDecline();
+    } catch (_) {
+      // Non-loopback or older backend: fall back to the local flag.
+    }
     await prefs.setBool(authSetupDoneKey, true);
     ref.invalidate(authGateProvider);
     // BUG-ONB5: gpuInfoProvider (a one-shot FutureProvider, not reactively

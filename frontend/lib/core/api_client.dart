@@ -356,11 +356,15 @@ class MemoApiClient {
         }
         if (data['content'] != null ||
             data['thinking'] != null ||
-            data['finish_reason'] != null) {
+            data['finish_reason'] != null ||
+            data['stats'] != null) {
           yield StreamChunk(
             content: data['content'] as String? ?? '',
             thinking: data['thinking'] as String?,
             finishReason: data['finish_reason'] as String?,
+            stats: data['stats'] is Map<String, dynamic>
+                ? MessageStats.fromJson(data['stats'] as Map<String, dynamic>)
+                : null,
           );
         }
         if (data['done'] == true) {
@@ -848,16 +852,33 @@ class MemoApiClient {
 
   // ─── Onboarding ─────────────────────────────────────────────────
 
+  bool? _lastOnboardingTourSeen;
+  bool? _lastOnboardingLaunchpadSeen;
+
+  bool? get lastOnboardingTourSeen => _lastOnboardingTourSeen;
+  bool? get lastOnboardingLaunchpadSeen => _lastOnboardingLaunchpadSeen;
+
   /// Whether the first-run wizard has been completed — a durable backend
   /// fact (see config.OnboardingConfig's doc comment), not scoped to one
   /// browser origin/device the way the old SharedPreferences-only flag was.
   Future<bool> getOnboardingComplete() async {
     final res = await _dio.get('/api/onboarding');
-    return _guard<Map<String, dynamic>>(res.data)['completed'] as bool? ?? false;
+    final data = _guard<Map<String, dynamic>>(res.data);
+    _lastOnboardingTourSeen = data['tour_seen'] as bool?;
+    _lastOnboardingLaunchpadSeen = data['launchpad_seen'] as bool?;
+    return data['completed'] as bool? ?? false;
   }
 
   Future<void> setOnboardingComplete(bool completed) async {
     await _dio.put('/api/onboarding', data: {'completed': completed});
+  }
+
+  Future<void> setOnboardingFlags({bool? tourSeen, bool? launchpadSeen}) async {
+    final data = <String, dynamic>{};
+    if (tourSeen != null) data['tour_seen'] = tourSeen;
+    if (launchpadSeen != null) data['launchpad_seen'] = launchpadSeen;
+    if (data.isEmpty) return;
+    await _dio.put('/api/onboarding', data: data);
   }
 
   // ─── System Prompt ──────────────────────────────────────────────
@@ -1857,11 +1878,15 @@ class MemoApiClient {
         }
         if (data['content'] != null ||
             data['thinking'] != null ||
-            data['finish_reason'] != null) {
+            data['finish_reason'] != null ||
+            data['stats'] != null) {
           yield StreamChunk(
             content: data['content'] as String? ?? '',
             thinking: data['thinking'] as String?,
             finishReason: data['finish_reason'] as String?,
+            stats: data['stats'] is Map<String, dynamic>
+                ? MessageStats.fromJson(data['stats'] as Map<String, dynamic>)
+                : null,
           );
         }
         if (data['done'] == true) {
@@ -1937,6 +1962,12 @@ class MemoApiClient {
       data: {'name': name},
     );
     return _guard<Map<String, dynamic>>(res.data)['token'] as String? ?? '';
+  }
+
+  /// Marks the first-run remote-access prompt as declined ("this device only")
+  /// on a loopback backend so NeedsSetup stays false across restarts/origins.
+  Future<void> setupDecline() async {
+    await _dio.post('/api/setup/decline');
   }
 
   /// Password login; returns the session token and the account's role.

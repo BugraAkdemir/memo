@@ -186,8 +186,6 @@ class _AppShellState extends ConsumerState<AppShell> {
           _showLaunchpad = false;
           _showTour = false;
         });
-        ref.read(launchpadSeenProvider.notifier).reset();
-        ref.read(tourSeenProvider.notifier).resetTour();
       } else if (prev == false && next == true) {
         WidgetsBinding.instance.addPostFrameCallback((_) => _checkOnboarding());
       }

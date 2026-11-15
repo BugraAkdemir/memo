@@ -37,6 +37,12 @@ func TestDefaultValues(t *testing.T) {
 	if cfg.AgentMode.MaxIterations != 40 {
 		t.Errorf("AgentMode.MaxIterations = %d, want 40", cfg.AgentMode.MaxIterations)
 	}
+	if !cfg.AgentMode.Enabled {
+		t.Error("AgentMode.Enabled should default true")
+	}
+	if !cfg.WebSearch.Enabled {
+		t.Error("WebSearch.Enabled should default true")
+	}
 	if cfg.AgentMode.TurnBudgetSecs != 1200 {
 		t.Errorf("AgentMode.TurnBudgetSecs = %d, want 1200", cfg.AgentMode.TurnBudgetSecs)
 	}

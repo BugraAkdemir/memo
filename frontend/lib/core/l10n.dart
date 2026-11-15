@@ -593,11 +593,18 @@ class L10n {
     'agent_undone': 'Son ajan işlemi başarıyla geri alındı.',
     'agent_undo_failed': 'Geri alma başarısız: \${e}',
 
-    // Agent mode toggle (Chat top bar)
+    // Agent mode toggle
+    'agent_mode_section': 'Agent Modu',
+    'agent_mode_off_label': 'Agent Modu Kapalı',
     'agent_mode_on': 'Agent Modu — Kapat',
     'agent_mode_off': 'Agent Modu — Aç',
     'agent_mode_tooltip':
         'Agent modu — dosya okuma/yazma ve komut çalıştırma araçlarını etkinleştirir.',
+    'agent_mode_toggle_error': 'Agent modu değiştirilemedi: \${e}',
+    'web_search_section': 'Web Araması',
+    'web_search_toggle_desc':
+        'Açıkken model gerektiğinde web araması yaparak güncel bilgilere erişebilir.',
+    'web_search_toggle_error': 'Web arama modu değiştirilemedi: \${e}',
 
     // Quick actions (welcome)
     'quick_review': 'Kod incele',
@@ -3708,10 +3715,17 @@ class L10n {
     'agent_undone': 'Last agent action undone.',
     'agent_undo_failed': 'Undo failed: \${e}',
 
+    'agent_mode_section': 'Agent Mode',
+    'agent_mode_off_label': 'Agent Mode Disabled',
     'agent_mode_on': 'Agent Mode — Turn Off',
     'agent_mode_off': 'Agent Mode — Turn On',
     'agent_mode_tooltip':
         'Agent mode — enables file read/write and command-execution tools.',
+    'agent_mode_toggle_error': 'Failed to toggle agent mode: \${e}',
+    'web_search_section': 'Web Search',
+    'web_search_toggle_desc':
+        'When enabled, the model can search the web whenever up-to-date information is needed.',
+    'web_search_toggle_error': 'Failed to toggle web search: \${e}',
 
     'quick_review': 'Code review',
     'quick_review_hint': 'Paste your code',

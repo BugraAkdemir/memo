@@ -17,7 +17,7 @@ final agentEnabledProvider =
 class AgentEnabledNotifier extends StateNotifier<bool> {
   final Ref _ref;
 
-  AgentEnabledNotifier(this._ref) : super(false) {
+  AgentEnabledNotifier(this._ref) : super(true) {
     _init();
   }
 
@@ -47,7 +47,7 @@ class AgentEnabledNotifier extends StateNotifier<bool> {
       if (!mounted) return; // disposed mid-request — see _init
       state = previous;
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Ajan modu değiştirilemedi (${FriendlyError.describeGeneric(e)})';
+          L10n.t('agent_mode_toggle_error', {'e': FriendlyError.describeGeneric(e)});
     }
   }
 }

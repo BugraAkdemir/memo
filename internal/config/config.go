@@ -1135,12 +1135,12 @@ func Default() *AppConfig {
 		},
 		AgentMode: AgentModeConfig{
 			SubAgentMaxParallel: 3,
-			// Off by default — a fresh install shouldn't start with
-			// file/command tool access live. Existing installs that had
-			// agent mode on when they last shut down now keep it on, since
-			// SetAgentEnabled persists it and Load() overlays their
-			// config.yaml.
-			Enabled:                    false,
+			// On by default (matching WebSearchConfig above): tools are gated
+			// behind per-action permission prompts and are invoked only when the
+			// user or model needs them, across desktop, web, Telegram, and
+			// WhatsApp. Existing installs that explicitly turned it off in
+			// Settings keep their saved config.yaml value on Load().
+			Enabled:                    true,
 			WorkingSetEnabled:          true,
 			WorkingSetMaxTokens:        600,
 			ConversationCompactEnabled: true,

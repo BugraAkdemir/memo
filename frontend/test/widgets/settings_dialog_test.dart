@@ -307,4 +307,23 @@ void main() {
     expect(find.text(L10n.t('decision_tab_title')), findsNothing);
   });
 
+  testWidgets('General Features exposes Agent Mode and Web Search toggles defaulted on',
+      (tester) async {
+    await _pumpSettingsDialog(tester);
+    await tester.tap(find.text(L10n.t('general_tab_features')));
+    await tester.pumpAndSettle();
+
+    final featuresList = find.byType(ListView).last;
+    await tester.scrollUntilVisible(
+      find.text(L10n.t('web_search_section')),
+      200,
+      scrollable: find.descendant(of: featuresList, matching: find.byType(Scrollable)),
+    );
+    expect(find.text(L10n.t('agent_mode_section')), findsOneWidget);
+    expect(find.text(L10n.t('agent_mode_active')), findsOneWidget);
+    expect(find.text(L10n.t('web_search_section')), findsOneWidget);
+    expect(find.text(L10n.t('web_search_on')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
 }

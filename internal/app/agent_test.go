@@ -44,20 +44,32 @@ func TestSetAgentEnabled_PersistsAcrossReload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
 	}
-	if cfg.AgentMode.Enabled {
-		t.Fatal("precondition: agent mode should default to off")
+	if !cfg.AgentMode.Enabled {
+		t.Fatal("precondition: agent mode should default to on")
 	}
 
 	a := &App{cfg: cfg}
+	if err := a.SetAgentEnabled(false); err != nil {
+		t.Fatalf("SetAgentEnabled(false): %v", err)
+	}
+
+	reloadedOff, err := config.Load(cfgFile)
+	if err != nil {
+		t.Fatalf("config.Load (reload off): %v", err)
+	}
+	if reloadedOff.AgentMode.Enabled {
+		t.Fatal("agent mode off state did not persist to config.yaml")
+	}
+
 	if err := a.SetAgentEnabled(true); err != nil {
 		t.Fatalf("SetAgentEnabled(true): %v", err)
 	}
 
-	reloaded, err := config.Load(cfgFile)
+	reloadedOn, err := config.Load(cfgFile)
 	if err != nil {
-		t.Fatalf("config.Load (reload): %v", err)
+		t.Fatalf("config.Load (reload on): %v", err)
 	}
-	if !reloaded.AgentMode.Enabled {
+	if !reloadedOn.AgentMode.Enabled {
 		t.Fatal("agent mode did not persist to config.yaml — a backend restart would silently lose it")
 	}
 }

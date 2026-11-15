@@ -1187,7 +1187,6 @@ class ChatTopBar extends ConsumerWidget {
     final isAgentEnabled = !isCLIChat && ref.watch(agentEnabledProvider);
     final isAutoPermission = ref.watch(agentAutoPermissionProvider);
     final isWhatsAppMode = ref.watch(whatsAppChatModeProvider);
-    final webSearchOn = ref.watch(webSearchModeProvider);
     // The browser panel is a beta feature: with Beta off its entry points are
     // not shown at all.
     final betaOn = ref.watch(betaEnabledProvider);
@@ -1296,7 +1295,7 @@ class ChatTopBar extends ConsumerWidget {
       const QuickModelDropdown(maxWidth: 200),
       const QuickEffortSelector(),
 
-      if (!isCLIChat || (isAgentChat && activeChatId.isNotEmpty))
+      if ((isAgentChat && activeChatId.isNotEmpty) || hasOverflowItems)
         Container(
           width: 1,
           height: 18,
@@ -1306,34 +1305,6 @@ class ChatTopBar extends ConsumerWidget {
 
       if (isAgentChat && activeChatId.isNotEmpty)
         CodeModeToggle(chatId: activeChatId),
-
-      if (!isCLIChat)
-        IconButton(
-          visualDensity: VisualDensity.compact,
-          icon: Icon(
-            Icons.smart_toy,
-            size: 19,
-            color: isAgentEnabled ? MemoTheme.green : c.textDim,
-          ),
-          tooltip:
-              '${isAgentEnabled ? L10n.t('agent_mode_on') : L10n.t('agent_mode_off')} — ${L10n.t('agent_mode_tooltip')}',
-          onPressed: () =>
-              ref.read(agentEnabledProvider.notifier).setEnabled(!isAgentEnabled),
-        ),
-
-      if (!isCLIChat)
-        IconButton(
-          visualDensity: VisualDensity.compact,
-          icon: Icon(
-            Icons.travel_explore,
-            size: 19,
-            color: webSearchOn ? MemoTheme.green : c.textDim,
-          ),
-          tooltip: webSearchOn
-              ? L10n.t('web_search_on')
-              : L10n.t('web_search_off'),
-          onPressed: () => ref.read(webSearchModeProvider.notifier).toggle(),
-        ),
 
       if (hasOverflowItems)
         PopupMenuButton<String>(
@@ -1503,20 +1474,6 @@ class ChatTopBar extends ConsumerWidget {
                     label: L10n.t('agent_undo'),
                     isActive: false,
                     onTap: handleUndo,
-                  ),
-                if (!isCLIChat)
-                  row(
-                    icon: Icons.smart_toy,
-                    label: isAgentEnabled ? L10n.t('agent_mode_on') : L10n.t('agent_mode_off'),
-                    isActive: isAgentEnabled,
-                    onTap: () => ref.read(agentEnabledProvider.notifier).setEnabled(!isAgentEnabled),
-                  ),
-                if (!isCLIChat)
-                  row(
-                    icon: Icons.travel_explore,
-                    label: webSearchOn ? L10n.t('web_search_on') : L10n.t('web_search_off'),
-                    isActive: webSearchOn,
-                    onTap: () => ref.read(webSearchModeProvider.notifier).toggle(),
                   ),
                 if (!isCLIChat && waStatus.asData?.value.connected == true)
                   row(

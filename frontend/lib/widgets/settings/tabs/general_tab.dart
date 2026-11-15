@@ -4,6 +4,7 @@ import '../../../core/theme.dart';
 import '../../../core/l10n.dart';
 import '../../../core/platform_capabilities.dart';
 import '../../../core/tray_controller.dart';
+import '../../../providers/agent_provider.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/mascot_provider.dart';
 import '../../memo_mascot.dart';
@@ -698,6 +699,98 @@ class _GeneralTabState extends ConsumerState<GeneralTab> {
           SizedBox(height: 8),
           const _MinimalModeOverridesDropdown(),
         ],
+
+        SizedBox(height: 32),
+
+        // Agent Mode Toggle
+        _buildFeatureToggleCard(
+          context,
+          sectionTitle: L10n.t('agent_mode_section'),
+          statusTitle: ref.watch(agentEnabledProvider)
+              ? L10n.t('agent_mode_active')
+              : L10n.t('agent_mode_off_label'),
+          description: L10n.t('agent_mode_tooltip'),
+          value: ref.watch(agentEnabledProvider),
+          onChanged: (val) =>
+              ref.read(agentEnabledProvider.notifier).setEnabled(val),
+        ),
+
+        SizedBox(height: 32),
+
+        // Web Search Toggle
+        _buildFeatureToggleCard(
+          context,
+          sectionTitle: L10n.t('web_search_section'),
+          statusTitle: ref.watch(webSearchModeProvider)
+              ? L10n.t('web_search_on')
+              : L10n.t('web_search_off'),
+          description: L10n.t('web_search_toggle_desc'),
+          value: ref.watch(webSearchModeProvider),
+          onChanged: (val) =>
+              ref.read(webSearchModeProvider.notifier).setEnabled(val),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFeatureToggleCard(
+    BuildContext context, {
+    required String sectionTitle,
+    required String statusTitle,
+    required String description,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    final theme = MemoTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          sectionTitle,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: theme.textMain,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: theme.bgPanel,
+            borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+            border: Border.all(color: theme.borderSoft),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      statusTitle,
+                      style: TextStyle(fontSize: 14, color: theme.textMain),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      description,
+                      style: TextStyle(fontSize: 12, color: theme.textDim),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: value,
+                activeThumbColor: MemoTheme.accent,
+                inactiveThumbColor: theme.textDim,
+                inactiveTrackColor: theme.bgHover,
+                trackOutlineColor: WidgetStateProperty.all(theme.borderHover),
+                onChanged: onChanged,
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

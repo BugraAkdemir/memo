@@ -52,6 +52,7 @@ void main() {
     );
     addTearDown(container.dispose);
     container.read(isSendingProvider.notifier).state = true;
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
     expect(container.read(agentEnabledProvider), isFalse);
     await tester.pumpWidget(
       UncontrolledProviderScope(

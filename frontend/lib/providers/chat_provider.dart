@@ -279,20 +279,6 @@ class ActiveChatIdNotifier extends AsyncNotifier<String> {
     await api.switchChat(id);
     state = AsyncData(id);
     ref.invalidate(messagesProvider);
-
-    // Auto-enable/disable agent mode based on chat type
-    final chats = ref.read(chatListProvider).valueOrNull ?? [];
-    final chat = chats.where((c) => c.id == id).firstOrNull;
-    final isAgent = chat?.isAgentChat ?? false;
-    if (isAgent) {
-      if (!ref.read(agentEnabledProvider)) {
-        ref.read(agentEnabledProvider.notifier).setEnabled(true);
-      }
-    } else {
-      if (ref.read(agentEnabledProvider)) {
-        ref.read(agentEnabledProvider.notifier).setEnabled(false);
-      }
-    }
   }
 }
 
@@ -394,7 +380,7 @@ final webSearchModeProvider =
 class WebSearchModeNotifier extends StateNotifier<bool> {
   final MemoApiClient _api;
   final Ref _ref;
-  WebSearchModeNotifier(this._api, this._ref) : super(false) {
+  WebSearchModeNotifier(this._api, this._ref) : super(true) {
     _init();
   }
 
@@ -408,21 +394,24 @@ class WebSearchModeNotifier extends StateNotifier<bool> {
       state = enabled;
     } catch (e) {
       debugPrint('chat: web search init error: ${FriendlyError.describeGeneric(e)}');
-      // leave default (off) on error
+      // leave default (on) on error
     }
   }
 
-  Future<void> toggle() async {
-    final next = !state;
+  Future<void> setEnabled(bool enabled) async {
+    final previous = state;
+    state = enabled;
     try {
-      await _api.setWebSearchEnabled(next);
-      if (!mounted) return; // disposed mid-request — see _init
-      state = next;
+      await _api.setWebSearchEnabled(enabled);
     } catch (e) {
+      if (!mounted) return; // disposed mid-request — see _init
+      state = previous;
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Web arama modu değiştirilemedi (${FriendlyError.describeGeneric(e)})';
+          L10n.t('web_search_toggle_error', {'e': FriendlyError.describeGeneric(e)});
     }
   }
+
+  Future<void> toggle() => setEnabled(!state);
 }
 
 // ─── Messages ───────────────────────────────────────────────────

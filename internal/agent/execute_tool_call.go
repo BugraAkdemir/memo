@@ -75,7 +75,7 @@ func (e *Executor) ExecuteToolCall(ctx context.Context, sessionID, toolName stri
 	// called at all.
 	ctx = tools.WithSandboxSetter(ctx, sandbox)
 	if e.sessionManager != nil {
-		ctx = tools.WithProjectPathSetter(ctx, e.sessionManager, sessionID)
+		ctx = tools.WithWorkingDirSetter(ctx, e.sessionManager, sessionID)
 	}
 
 	if err := sandbox.RateLimit(toolName, hashArgs(args)); err != nil {

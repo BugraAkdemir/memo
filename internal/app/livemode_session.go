@@ -344,7 +344,7 @@ func (a *App) buildLiveModeToolCallHandler(workMode, sessionID string, injectCon
 			// old directory again.
 			projectPath := ""
 			if sm := a.getSessionManager(); sm != nil {
-				projectPath = sm.GetProjectPath(sessionID)
+				projectPath = sm.GetWorkingDir(sessionID)
 			}
 			return a.agentExecutor.ExecuteToolCall(ctx, sessionID, name, args, onEvent, projectPath)
 		}

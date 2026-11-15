@@ -53,6 +53,11 @@ type Session struct {
 	UpdatedAt   string        `json:"updated_at"`
 	Messages    []ChatMessage `json:"messages"`
 	ProjectPath string        `json:"project_path,omitempty"`
+	// WorkingDir is the session's active filesystem sandbox directory
+	// (updated by change_directory), kept separate from ProjectPath so
+	// switching folders in a normal, Telegram, or WhatsApp chat never flips
+	// the session into an isolated Project/Code chat.
+	WorkingDir string `json:"working_dir,omitempty"`
 	// ProjectID is the stable id of the project ProjectPath belongs to (see
 	// internal/project). It is what ties this chat to its project-scoped memory,
 	// and it survives the folder being moved or renamed. Resolved lazily from
@@ -314,6 +319,36 @@ func (m *Manager) SetProjectPath(id, path string) error {
 		s.ProjectID = ""
 	}
 	s.ProjectPath = path
+	return m.save(s)
+}
+
+// GetWorkingDir returns the effective filesystem sandbox directory for chat
+// id: explicit WorkingDir if set, otherwise ProjectPath, or "" when neither is
+// set (meaning the caller should fall back to the default workspace).
+func (m *Manager) GetWorkingDir(id string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return ""
+	}
+	if s.WorkingDir != "" {
+		return s.WorkingDir
+	}
+	return s.ProjectPath
+}
+
+// SetWorkingDir updates a session's persisted WorkingDir without modifying
+// ProjectPath or ProjectID, keeping normal/Telegram/WhatsApp chats out of
+// project isolation when changing folders.
+func (m *Manager) SetWorkingDir(id, path string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found: %s", id)
+	}
+	s.WorkingDir = path
 	return m.save(s)
 }
 

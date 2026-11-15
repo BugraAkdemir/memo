@@ -193,6 +193,66 @@ func TestChangeDirectory_ResolvesTilde(t *testing.T) {
 	}
 }
 
+type fakeWorkingDirStore struct {
+	byID map[string]string
+	err  error
+}
+
+func (f *fakeWorkingDirStore) SetWorkingDir(sessionID, path string) error {
+	if f.err != nil {
+		return f.err
+	}
+	if f.byID == nil {
+		f.byID = map[string]string{}
+	}
+	f.byID[sessionID] = path
+	return nil
+}
+
+func TestChangeDirectory_PersistsViaWorkingDirSetter(t *testing.T) {
+	base := t.TempDir()
+	sandbox := &fakeSandbox{basePath: base}
+	projStore := &fakeProjectPathStore{}
+	workStore := &fakeWorkingDirStore{}
+
+	ctx := WithSandboxSetter(context.Background(), sandbox)
+	ctx = WithProjectPathSetter(ctx, projStore, "session-1")
+	ctx = WithWorkingDirSetter(ctx, workStore, "session-1")
+
+	if _, err := ChangeDirectory(ctx, changeDirArgs(t, base), base, nil); err != nil {
+		t.Fatalf("ChangeDirectory() error = %v", err)
+	}
+	resolvedBase, _ := filepath.EvalSymlinks(base)
+	if got := workStore.byID["session-1"]; got != resolvedBase {
+		t.Errorf("persisted working dir = %q, want %q", got, resolvedBase)
+	}
+	if _, touched := projStore.byID["session-1"]; touched {
+		t.Error("ProjectPathSetter should not be mutated when WorkingDirSetter is present")
+	}
+}
+
+func TestChangeDirectory_CreateIfMissing(t *testing.T) {
+	base := t.TempDir()
+	sandbox := &fakeSandbox{basePath: base}
+	ctx := WithSandboxSetter(context.Background(), sandbox)
+
+	args, _ := json.Marshal(ChangeDirectoryArgs{Path: "newproj/nested", CreateIfMissing: true})
+	preview, err := ChangeDirectoryPreview(args, base)
+	if err != nil {
+		t.Fatalf("ChangeDirectoryPreview() error = %v", err)
+	}
+	if !strings.Contains(preview, "Create and switch working directory to:") {
+		t.Errorf("unexpected preview %q", preview)
+	}
+	if _, err := ChangeDirectory(ctx, args, base, nil); err != nil {
+		t.Fatalf("ChangeDirectory(CreateIfMissing) error = %v", err)
+	}
+	want, _ := filepath.EvalSymlinks(filepath.Join(base, "newproj/nested"))
+	if sandbox.basePath != want {
+		t.Errorf("sandbox.basePath = %q, want %q", sandbox.basePath, want)
+	}
+}
+
 func TestChangeDirectoryPreview(t *testing.T) {
 	base := t.TempDir()
 	preview, err := ChangeDirectoryPreview(changeDirArgs(t, base), base)

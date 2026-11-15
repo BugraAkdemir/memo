@@ -9,7 +9,6 @@ import (
 	"memo/internal/project"
 	"memo/internal/webchat"
 	"os"
-	"path/filepath"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -799,7 +798,7 @@ func (a *App) Startup(ctx context.Context) {
 	tools.ProjectSkills = projectSkillToolAdapter{a}
 	tools.Skills = skillToolAdapter{a}
 
-	basePath, _ := filepath.Abs(".")
+	basePath := a.defaultWorkspaceDir()
 	a.providerMu.RLock()
 	providerRouter, providerCfgMgr := a.providerRouter, a.providerCfgMgr
 	a.providerMu.RUnlock()

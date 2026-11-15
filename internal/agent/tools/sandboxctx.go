@@ -28,6 +28,35 @@ func SandboxSetterFromContext(ctx context.Context) (SandboxSetter, bool) {
 	return s, ok
 }
 
+// WorkingDirSetter persists a session's working-directory switch past the
+// current turn without marking the chat as an isolated Project chat.
+type WorkingDirSetter interface {
+	SetWorkingDir(sessionID, path string) error
+}
+
+type workingDirSetterKey struct{}
+
+type workingDirCtxValue struct {
+	setter    WorkingDirSetter
+	sessionID string
+}
+
+// WithWorkingDirSetter attaches the session manager + current session id so
+// change_directory updates the chat's WorkingDir across turns.
+func WithWorkingDirSetter(ctx context.Context, setter WorkingDirSetter, sessionID string) context.Context {
+	return context.WithValue(ctx, workingDirSetterKey{}, workingDirCtxValue{setter: setter, sessionID: sessionID})
+}
+
+// WorkingDirSetterFromContext retrieves what WithWorkingDirSetter attached, if
+// any.
+func WorkingDirSetterFromContext(ctx context.Context) (setter WorkingDirSetter, sessionID string, ok bool) {
+	v, present := ctx.Value(workingDirSetterKey{}).(workingDirCtxValue)
+	if !present || v.setter == nil || v.sessionID == "" {
+		return nil, "", false
+	}
+	return v.setter, v.sessionID, true
+}
+
 // ProjectPathSetter is the narrow surface change_directory needs from
 // *sessions.Manager to persist a directory switch past the current turn —
 // same import-cycle-avoidance reasoning as SandboxSetter above.

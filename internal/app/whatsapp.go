@@ -932,7 +932,7 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 		// basePath whenever projectPath is empty.
 		waProjectPath := ""
 		if sm != nil && waSessionID != "" {
-			waProjectPath = sm.GetProjectPath(waSessionID)
+			waProjectPath = sm.GetWorkingDir(waSessionID)
 		}
 
 		start := time.Now()

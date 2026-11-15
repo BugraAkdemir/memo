@@ -184,9 +184,9 @@ func (a *App) ChatSubAgentAction(ctx context.Context, chatID, action string, arg
 			return "", fmt.Errorf("no provider selected for sub-agent model %q", model)
 		}
 		name := selected.Name
-		project := a.getSessionManager().GetProjectPath(chatID)
+		project := a.getSessionManager().GetWorkingDir(chatID)
 		if project == "" && a.agentExecutor != nil {
-			project, _ = filepath.Abs(".")
+			project = a.defaultWorkspaceDir()
 		}
 		isolate := req.Write // writers get isolation by default
 		if req.Isolate != nil {

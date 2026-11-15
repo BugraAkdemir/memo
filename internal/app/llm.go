@@ -414,7 +414,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 		sm := a.getSessionManager()
 		projectPath := ""
 		if sessionID != "" && sm != nil {
-			projectPath = sm.GetProjectPath(sessionID)
+			projectPath = sm.GetWorkingDir(sessionID)
 		}
 
 		// PromptTokens here is only a seed-message word-count estimate; it is
@@ -897,7 +897,7 @@ func (a *App) callWebSearchAgentStream(ctx context.Context, messages []api.Messa
 		sm := a.getSessionManager()
 		projectPath := ""
 		if sessionID != "" && sm != nil {
-			projectPath = sm.GetProjectPath(sessionID)
+			projectPath = sm.GetWorkingDir(sessionID)
 		}
 
 		usageMetaVal := usageMeta{Provider: a.turnProviderLabel(ctx), Model: modelName, Category: categoryWebSearch, PromptTokens: estimateMessagesTokens(messages)}
@@ -1048,7 +1048,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 		sm := a.getSessionManager()
 		projectPath := ""
 		if sessionID != "" && sm != nil {
-			projectPath = sm.GetProjectPath(sessionID)
+			projectPath = sm.GetWorkingDir(sessionID)
 		}
 
 		pMsgs := make([]provider.Message, len(messages))

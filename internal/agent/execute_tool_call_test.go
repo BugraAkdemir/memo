@@ -168,8 +168,11 @@ func TestExecuteToolCall_ChangeDirectoryPersistsAndIsReadBackNextCall(t *testing
 		t.Fatalf("ExecuteToolCall(change_directory): %v", err)
 	}
 
-	if got := sm.GetProjectPath(sessionID); got != newDir {
-		t.Fatalf("expected the switch to persist to sessionManager, got %q want %q", got, newDir)
+	if got := sm.GetWorkingDir(sessionID); got != newDir {
+		t.Fatalf("expected the switch to persist WorkingDir to sessionManager, got %q want %q", got, newDir)
+	}
+	if sm.IsAgentChat(sessionID) {
+		t.Fatalf("change_directory on a non-project chat must not set ProjectPath / IsAgentChat")
 	}
 
 	// The read-back a caller (buildLiveModeToolCallHandler) must do before
@@ -177,7 +180,7 @@ func TestExecuteToolCall_ChangeDirectoryPersistsAndIsReadBackNextCall(t *testing
 	// otherwise still be originalDir, per ExecuteToolCall's own doc
 	// comment on its projectPath parameter.
 	readArgs := json.RawMessage(`{"path": "hello.txt"}`)
-	result, err := e.ExecuteToolCall(context.Background(), sessionID, "read_file", readArgs, nil, sm.GetProjectPath(sessionID))
+	result, err := e.ExecuteToolCall(context.Background(), sessionID, "read_file", readArgs, nil, sm.GetWorkingDir(sessionID))
 	if err != nil {
 		t.Fatalf("ExecuteToolCall(read_file) after directory switch: %v", err)
 	}

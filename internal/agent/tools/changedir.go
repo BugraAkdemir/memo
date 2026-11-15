@@ -12,7 +12,8 @@ import (
 
 // ChangeDirectoryArgs represents arguments for the change_directory tool.
 type ChangeDirectoryArgs struct {
-	Path string `json:"path"`
+	Path            string `json:"path"`
+	CreateIfMissing bool   `json:"create_if_missing,omitempty"`
 }
 
 // OutsideSandboxHint is appended to every "path is outside the working
@@ -52,7 +53,7 @@ func hardDenylistedRoots() []string {
 // directory. It does not consult defaultProtectedPaths/validatePath — those
 // answer "can I reach outside basePath", not "can this become the new
 // basePath"; see hardDenylistedRoots above for the check that matters here.
-func resolveChangeDirectoryTarget(rawPath, basePath string) (string, error) {
+func expandChangeDirectoryPath(rawPath, basePath string) (string, error) {
 	if strings.TrimSpace(rawPath) == "" {
 		return "", fmt.Errorf("path is required")
 	}
@@ -66,11 +67,33 @@ func resolveChangeDirectoryTarget(rawPath, basePath string) (string, error) {
 		expanded = filepath.Join(home, strings.TrimPrefix(expanded, "~"))
 	}
 
-	var fullPath string
 	if filepath.IsAbs(expanded) {
-		fullPath = filepath.Clean(expanded)
-	} else {
-		fullPath = filepath.Join(basePath, expanded)
+		return filepath.Clean(expanded), nil
+	}
+	return filepath.Join(basePath, expanded), nil
+}
+
+func checkNotHardDenylistedRoot(path string) error {
+	cmpPath := path
+	if runtime.GOOS == "windows" {
+		cmpPath = strings.ToLower(path)
+	}
+	for _, root := range hardDenylistedRoots() {
+		needle := root
+		if runtime.GOOS == "windows" {
+			needle = strings.ToLower(needle)
+		}
+		if cmpPath == needle {
+			return fmt.Errorf("refusing to set the working directory to %q — it is a protected system root, not a project directory", path)
+		}
+	}
+	return nil
+}
+
+func resolveChangeDirectoryTarget(rawPath, basePath string) (string, error) {
+	fullPath, err := expandChangeDirectoryPath(rawPath, basePath)
+	if err != nil {
+		return "", err
 	}
 
 	realPath, err := filepath.EvalSymlinks(fullPath)
@@ -89,18 +112,8 @@ func resolveChangeDirectoryTarget(rawPath, basePath string) (string, error) {
 		return "", fmt.Errorf("%q is a file, not a directory", rawPath)
 	}
 
-	cmpPath := realPath
-	if runtime.GOOS == "windows" {
-		cmpPath = strings.ToLower(realPath)
-	}
-	for _, root := range hardDenylistedRoots() {
-		needle := root
-		if runtime.GOOS == "windows" {
-			needle = strings.ToLower(needle)
-		}
-		if cmpPath == needle {
-			return "", fmt.Errorf("refusing to set the working directory to %q — it is a protected system root, not a project directory", realPath)
-		}
+	if err := checkNotHardDenylistedRoot(realPath); err != nil {
+		return "", err
 	}
 
 	return realPath, nil
@@ -114,10 +127,20 @@ func ChangeDirectoryPreview(argsJSON json.RawMessage, basePath string) (string, 
 		return "", fmt.Errorf("invalid arguments: %w", err)
 	}
 	target, err := resolveChangeDirectoryTarget(args.Path, basePath)
-	if err != nil {
-		return "", err
+	if err == nil {
+		return fmt.Sprintf("Change working directory to: %s", target), nil
 	}
-	return fmt.Sprintf("Change working directory to: %s", target), nil
+	if args.CreateIfMissing {
+		fullPath, pathErr := expandChangeDirectoryPath(args.Path, basePath)
+		if pathErr != nil {
+			return "", pathErr
+		}
+		if denyErr := checkNotHardDenylistedRoot(fullPath); denyErr != nil {
+			return "", denyErr
+		}
+		return fmt.Sprintf("Create and switch working directory to: %s", fullPath), nil
+	}
+	return "", err
 }
 
 // ChangeDirectory switches the agent's effective sandbox root for the rest
@@ -132,6 +155,19 @@ func ChangeDirectory(ctx context.Context, argsJSON json.RawMessage, basePath str
 	}
 
 	target, err := resolveChangeDirectoryTarget(args.Path, basePath)
+	if err != nil && args.CreateIfMissing {
+		fullPath, pathErr := expandChangeDirectoryPath(args.Path, basePath)
+		if pathErr != nil {
+			return "", pathErr
+		}
+		if denyErr := checkNotHardDenylistedRoot(fullPath); denyErr != nil {
+			return "", denyErr
+		}
+		if mkErr := os.MkdirAll(fullPath, 0755); mkErr != nil {
+			return "", fmt.Errorf("create directory %s: %w", fullPath, mkErr)
+		}
+		target, err = resolveChangeDirectoryTarget(args.Path, basePath)
+	}
 	if err != nil {
 		return "", err
 	}
@@ -143,7 +179,11 @@ func ChangeDirectory(ctx context.Context, argsJSON json.RawMessage, basePath str
 	sandbox.SetBasePath(target)
 
 	persisted := ""
-	if setter, sessionID, ok := ProjectPathSetterFromContext(ctx); ok {
+	if setter, sessionID, ok := WorkingDirSetterFromContext(ctx); ok {
+		if err := setter.SetWorkingDir(sessionID, target); err != nil {
+			persisted = fmt.Sprintf(" (warning: could not persist for future turns: %v)", err)
+		}
+	} else if setter, sessionID, ok := ProjectPathSetterFromContext(ctx); ok {
 		if err := setter.SetProjectPath(sessionID, target); err != nil {
 			// The live sandbox already switched (the more important half —
 			// it's what every subsequent tool call this turn actually uses),

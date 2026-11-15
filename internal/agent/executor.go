@@ -484,12 +484,12 @@ func (e *Executor) RunStreamWithRouter(ctx context.Context, router *provider.Rou
 		return policy, err
 	}
 
-	// Let change_directory persist a directory switch past this turn (see
-	// tools.WithSandboxSetter in Pipeline.RunStream for the turn-local half).
-	// Every RunStream caller reaches this — Flutter chat, WhatsApp, Telegram
-	// — so persistence isn't a per-channel concern.
+	// Let change_directory persist a directory switch past this turn without
+	// converting non-project chats into isolated Project/Code chats. Every
+	// RunStream caller reaches this — Flutter chat, WhatsApp, Telegram — so
+	// persistence isn't a per-channel concern.
 	if e.sessionManager != nil {
-		ctx = tools.WithProjectPathSetter(ctx, e.sessionManager, sessionID)
+		ctx = tools.WithWorkingDirSetter(ctx, e.sessionManager, sessionID)
 	}
 
 	return pipeline.RunStream(ctx, messages, modelName, wrappedOnEvent, waitFn)

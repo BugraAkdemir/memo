@@ -18,6 +18,7 @@ import 'package:memo_flutter/providers/new_chat_provider.dart';
 import 'package:memo_flutter/providers/settings_provider.dart';
 import 'package:memo_flutter/screens/chat_screen.dart';
 import 'package:memo_flutter/providers/skill_provider.dart';
+import 'package:memo_flutter/widgets/new_chat_landing.dart';
 import 'package:memo_flutter/widgets/slash_menu.dart';
 
 import '../support/fake_skills.dart';
@@ -95,8 +96,14 @@ void main() {
   }
 
   Finder field() => find.byType(TextField);
-  Finder chatSeg() => find.text(L10n.t('mode_chat_label'));
-  Finder agentSeg() => find.text(L10n.t('mode_agent_label'));
+  Finder chatSeg() => find.descendant(
+        of: find.byType(NewChatLanding),
+        matching: find.text(L10n.t('mode_chat_label')),
+      );
+  Finder agentSeg() => find.descendant(
+        of: find.byType(NewChatLanding),
+        matching: find.text(L10n.t('mode_agent_label')),
+      );
 
   testWidgets('slash menu on the landing page follows arrows and keeps the composer focused', (tester) async {
     await pump(tester, height: 748);

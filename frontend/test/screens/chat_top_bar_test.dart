@@ -223,7 +223,9 @@ void main() {
       await pump(tester, width: 1100);
       expect(find.byTooltip(L10n.t('agent_chat_marker')), findsOneWidget);
       expect(find.byTooltip(L10n.t('code_mode_off_tooltip')), findsOneWidget);
-      expect(find.byIcon(Icons.smart_toy), findsNothing);
+      // Only the agent_chat_marker icon next to the title remains; the top-bar
+      // Agent Mode toggle (previously a second Icons.smart_toy) and Web Search toggle are gone.
+      expect(find.byIcon(Icons.smart_toy), findsOneWidget);
       expect(find.byIcon(Icons.travel_explore), findsNothing);
       await tester.tap(find.byIcon(Icons.more_horiz));
       await tester.pumpAndSettle();
@@ -253,7 +255,7 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text(L10n.t('code_mode_off_tooltip')), findsOneWidget);
       expect(find.text(L10n.t('taskloop_title')), findsOneWidget);
-      expect(find.byIcon(Icons.smart_toy), findsNothing);
+      expect(find.byIcon(Icons.smart_toy), findsOneWidget);
       expect(find.byIcon(Icons.travel_explore), findsNothing);
     });
   });

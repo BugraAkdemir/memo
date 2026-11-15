@@ -1,3 +1,10 @@
+# Son oturum — 14 Kasım — Masaüstü başlangıç ve süreç sahipliği (Adım 2–5)
+- `main` üzerinde `docs/plans/PLAN_desktop_tray_lifecycle.md` Adım 2–5 tamamlandı: `9d9e3d0d` (Adım 2–3a `StartupTiming`), `635a0cf6` (Adım 3b motor yol çözümü + Windows kopya/sleep temizliği), `d6ea5333` (Adım 4 çevrimdışı TTF fontlar + tembel `AppShell` sekmeleri + `CalendarReminderSync`), `b209b35c` (Adım 5 `--desktop-session`/`--owned` pipe-EOF sahipliği, Windows `BREAKAWAY_OK` Job Object, Unix `-pgid`, `DetachedAttr`, `shutdownPreEngineTimeout`, Win/Linux/mac başlatıcıları).
+- Doğrulama (`b209b35c`): `go build`/`go vet -tags "sqlite_fts5" ./...` PASS; `go test -race` `.`, `procjob`, `browseropen`, `agent/tools`, `llama`, `whisper`, `tts`, `database`, `cliproxy` + `updater` (`Apply|PlaceNew|Swap`) + `app` (`ClientRegistry|Shutdown`) PASS; `GOOS=windows/darwin` build + darwin vet PASS. Flutter: `analyze lib/` yalnız 3 eski info; `flutter test --concurrency=1` `+1035 ~1` PASS; L10n literal check temiz.
+- Kapsam dışı/eski kırmızılar: `e2e` `TestChat_*` (2) ve `TestIntegration_LongHistoryGetsCompacted` (pre-existing); `updater` `Publish*/VerifyScript` (untracked `scripts/rust-ai-slides/node_modules`); `agent/tools` Windows test vet (`applaunch_test.go`). Fiziksel Windows/macOS cihaz testi ve `git push` kullanıcıda.
+
+---
+
 # Son oturum — 12 Kasım — Windows tray ilk düzeltme
 - Yetkili uygulama: codex/desktop-tray-lifecycle, son kod3b3fca12 push. X için hazır icon+menu/2sn sınır/taskbar fallback, TR/EN, idempotent Quit. MIT tray_manager0.2.4 vendored: initialized/checked Windows shell, Explorer restore/fail→show, ana engine tray sahipliği. Ayrıntı raporda.
 - Yerel12 PASS/1 Windows-only SKIP; lib+test analiz eski3info, UI literal yok, diff check PASS. Native/full CI 43099165002/43099237732 KUYRUKTA; yeşil iddiası yok. Önceki aday CI iptali istendi; tekrar-yeşile dek yok. Native gerçek Explorer/overflow/mascot kabulü açık.

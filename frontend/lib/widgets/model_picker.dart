@@ -199,7 +199,7 @@ class _ModelPickerPanelState extends State<_ModelPickerPanel> {
     final c = MemoTheme.of(context);
     final size = MediaQuery.sizeOf(context);
     const margin = 12.0;
-    final width = (size.width - margin * 2).clamp(240.0, 340.0);
+    final width = (size.width - margin * 2).clamp(260.0, 360.0);
     final left = (widget.anchor.right - width).clamp(margin, size.width - width - margin);
     final bottomEdge = size.height - MediaQuery.viewInsetsOf(context).bottom - margin;
     final below = bottomEdge - widget.anchor.bottom - 6;
@@ -219,16 +219,21 @@ class _ModelPickerPanelState extends State<_ModelPickerPanel> {
           bottom: openAbove ? size.height - widget.anchor.top + 6 : null,
           width: width,
           child: Material(
-            color: c.bgPanel,
-            elevation: 8,
-            shadowColor: Colors.black54,
-            borderRadius: BorderRadius.circular(12),
-            clipBehavior: Clip.antiAlias,
+            color: Colors.transparent,
             child: Container(
               constraints: BoxConstraints(maxHeight: maxHeight),
+              clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: c.borderSoft),
+                color: c.bgPanel,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: c.borderSoft.withValues(alpha: 0.8)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.24),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -237,7 +242,7 @@ class _ModelPickerPanelState extends State<_ModelPickerPanel> {
                     Padding(
                       padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
                       child: SizedBox(
-                        height: 34,
+                        height: 36,
                         child: TextField(
                           controller: _search,
                           autofocus: true,
@@ -253,11 +258,30 @@ class _ModelPickerPanelState extends State<_ModelPickerPanel> {
                             hintStyle: TextStyle(fontSize: 13, color: c.textDim),
                             prefixIcon: Icon(Icons.search, size: 16, color: c.textDim),
                             prefixIconConstraints: const BoxConstraints(minWidth: 34),
+                            suffixIcon: _q.isNotEmpty
+                                ? IconButton(
+                                    icon: Icon(Icons.close, size: 14, color: c.textDim),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    onPressed: () {
+                                      _search.clear();
+                                      setState(() => _q = '');
+                                    },
+                                  )
+                                : null,
                             filled: true,
                             fillColor: c.bgElement,
                             contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(9),
+                              borderSide: BorderSide(color: c.borderSoft.withValues(alpha: 0.5)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(9),
+                              borderSide: BorderSide(color: MemoTheme.accent.withValues(alpha: 0.55)),
+                            ),
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(9),
                               borderSide: BorderSide.none,
                             ),
                           ),
@@ -268,12 +292,20 @@ class _ModelPickerPanelState extends State<_ModelPickerPanel> {
                     child: ListView(
                       shrinkWrap: true,
                       padding: const EdgeInsets.symmetric(vertical: 6),
-                      children: [for (final e in visible) e.isHeader ? _header(c, e) : _row(context, c, e)],
+                      children: [
+                        for (var i = 0; i < visible.length; i++)
+                          visible[i].isHeader
+                              ? _header(c, visible[i], showDivider: i > 0)
+                              : _row(context, c, visible[i]),
+                      ],
                     ),
                   ),
                   if (widget.footer != null) ...[
-                    Divider(height: 1, color: c.borderSoft),
-                    _row(context, c, widget.footer!, accent: true),
+                    Divider(height: 1, color: c.borderSoft.withValues(alpha: 0.7)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: _row(context, c, widget.footer!, accent: true),
+                    ),
                   ],
                 ],
               ),
@@ -284,95 +316,127 @@ class _ModelPickerPanelState extends State<_ModelPickerPanel> {
     );
   }
 
-  Widget _header(ThemeColors c, ModelPickerEntry e) {
+  Widget _header(ThemeColors c, ModelPickerEntry e, {bool showDivider = false}) {
     final searching = _q.trim().isNotEmpty;
     final open = searching || !_collapsedSections.contains(e.title);
-    return InkWell(
-      onTap: searching ? null : () => _toggle(e.title),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 9, 14, 6),
-        child: Row(
-          children: [
-            // A chevron that points right when folded and down when open.
-            AnimatedRotation(
-              turns: open ? 0.25 : 0,
-              duration: const Duration(milliseconds: 120),
-              child: Icon(Icons.chevron_right, size: 16, color: c.textDim),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (showDivider)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 2),
+            child: Divider(height: 1, color: c.borderSoft.withValues(alpha: 0.45)),
+          ),
+        InkWell(
+          onTap: searching ? null : () => _toggle(e.title),
+          borderRadius: BorderRadius.circular(7),
+          hoverColor: c.bgHover.withValues(alpha: 0.45),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 5),
+            child: Row(
+              children: [
+                AnimatedRotation(
+                  turns: open ? 0.25 : 0,
+                  duration: const Duration(milliseconds: 120),
+                  child: Icon(Icons.chevron_right, size: 15, color: c.textDim),
+                ),
+                const SizedBox(width: 5),
+                if (e.leading != null) ...[e.leading!, const SizedBox(width: 7)],
+                Expanded(
+                  child: Text(
+                    e.title.toUpperCase(),
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3,
+                      color: c.textDim,
+                    ),
+                  ),
+                ),
+                if (!open)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: c.bgElement,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${_sectionSize[e.title] ?? 0}',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: c.textDim),
+                    ),
+                  ),
+              ],
             ),
-            const SizedBox(width: 4),
-            if (e.leading != null) ...[e.leading!, const SizedBox(width: 7)],
-            Expanded(
-              child: Text(
-                e.title.toUpperCase(),
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, letterSpacing: 0.6, color: c.textDim),
-              ),
-            ),
-            if (!open)
-              Text(
-                '${_sectionSize[e.title] ?? 0}',
-                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: c.textDim),
-              ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 
   Widget _row(BuildContext context, ThemeColors c, ModelPickerEntry e, {bool accent = false}) {
     final color = accent ? MemoTheme.accent : c.textMain;
-    return InkWell(
-      onTap: () => Navigator.of(context).pop(e.value),
-      child: Container(
-        height: 38,
-        margin: const EdgeInsets.symmetric(horizontal: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        decoration: BoxDecoration(
-          color: e.active ? MemoTheme.accent.withValues(alpha: 0.12) : null,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            SizedBox(width: 20, child: Center(child: e.leading)),
-            const SizedBox(width: 10),
-            // Name + tag take ALL the room left of the right-hand cluster, so the
-            // percentage / check columns line up across rows whether or not a row
-            // has a tag, and a long name is cut only when it truly cannot fit.
-            Expanded(
-              child: Row(
-                children: [
-                  Flexible(
-                    child: Text(
-                      e.title,
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: e.active ? FontWeight.w700 : FontWeight.w500,
-                        color: color,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1.5),
+      child: InkWell(
+        onTap: () => Navigator.of(context).pop(e.value),
+        borderRadius: BorderRadius.circular(9),
+        hoverColor: c.bgHover.withValues(alpha: 0.55),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 36),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: e.active ? MemoTheme.accent.withValues(alpha: 0.10) : null,
+            borderRadius: BorderRadius.circular(9),
+            border: e.active
+                ? Border.all(color: MemoTheme.accent.withValues(alpha: 0.24))
+                : null,
+          ),
+          child: Row(
+            children: [
+              SizedBox(width: 18, child: Center(child: e.leading)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        e.title,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: e.active || accent ? FontWeight.w600 : FontWeight.w400,
+                          color: color,
+                        ),
                       ),
                     ),
-                  ),
-                  if (e.tag.isNotEmpty) ...[
-                    const SizedBox(width: 7),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                      decoration: BoxDecoration(color: c.bgHover, borderRadius: BorderRadius.circular(5)),
-                      child: Text(e.tag, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: c.textDim)),
-                    ),
+                    if (e.tag.isNotEmpty) ...[
+                      const SizedBox(width: 7),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: c.bgElement,
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(color: c.borderSoft.withValues(alpha: 0.5)),
+                        ),
+                        child: Text(
+                          e.tag,
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: c.textDim),
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            if (e.trailing != null) ...[const SizedBox(width: 8), e.trailing!],
-            // Fixed slot, so a row that is not the active one does not shift the
-            // percentage column left by the width of the check.
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 16,
-              child: e.active ? Icon(Icons.check, size: 16, color: MemoTheme.accent) : null,
-            ),
-          ],
+              if (e.trailing != null) ...[const SizedBox(width: 8), e.trailing!],
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 16,
+                child: e.active ? Icon(Icons.check_rounded, size: 15, color: MemoTheme.accent) : null,
+              ),
+            ],
+          ),
         ),
       ),
     );

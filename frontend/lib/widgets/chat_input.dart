@@ -18,6 +18,7 @@ import 'glass_surface.dart';
 import '../models/agent.dart';
 import '../models/chat.dart';
 import '../models/cli_command.dart';
+import '../models/model_capabilities.dart';
 import '../models/provider_config.dart';
 import '../models/provider_models.dart';
 import '../providers/agent_provider.dart';
@@ -1431,30 +1432,40 @@ class _ChatInputState extends ConsumerState<ChatInput> {
             // instead: the field gets its own full-width row, with the
             // action buttons and send button on a second row underneath.
             final narrow = constraints.maxWidth < _composerStackBelowWidth;
+            final whisperEnabled =
+                ref.watch(whisperEnabledProvider).valueOrNull ?? false;
+            final recState = ref.watch(recordingProvider);
+            final caps = resolveModelInputCapabilities(
+              activeProvider:
+                  ref.watch(activeProviderTypeProvider).valueOrNull ?? '',
+              cliType:
+                  ref.watch(activeChatCLIProviderProvider).valueOrNull ?? '',
+              providers:
+                  ref.watch(providerListProvider).valueOrNull ?? const [],
+              localStatus: ref.watch(modelStatusOnceProvider).valueOrNull,
+              localModels:
+                  ref.watch(localModelsProvider).valueOrNull ?? const [],
+              orchestraEnabled: orchestraEnabled,
+            );
             final actions = <Widget>[
-              _InputIconButton(
-                icon: Icons.image_outlined,
-                tooltip: orchestraEnabled
-                    ? L10n.t('orchestra_not_available')
-                    : L10n.t('attach_image'),
-                disabled: orchestraEnabled,
-                onTap: () {
-                  if (orchestraEnabled) return;
-                  _pickAttachment(FileType.image);
-                },
-              ),
-              const SizedBox(width: 4),
-              _InputIconButton(
-                icon: Icons.attach_file,
-                tooltip: orchestraEnabled
-                    ? L10n.t('orchestra_not_available')
-                    : L10n.t('attach_file'),
-                disabled: orchestraEnabled,
-                onTap: () {
-                  if (orchestraEnabled) return;
-                  _pickAttachment(FileType.any);
-                },
-              ),
+              if (caps.supportsImages) ...[
+                _InputIconButton(
+                  icon: Icons.image_outlined,
+                  tooltip: L10n.t('attach_image'),
+                  disabled: false,
+                  onTap: () => _pickAttachment(FileType.image),
+                ),
+                const SizedBox(width: 4),
+              ],
+              if (caps.supportsFiles) ...[
+                _InputIconButton(
+                  icon: Icons.attach_file,
+                  tooltip: L10n.t('attach_file'),
+                  disabled: false,
+                  onTap: () => _pickAttachment(FileType.any),
+                ),
+                const SizedBox(width: 4),
+              ],
               // Orchestra quick toggle
               _InputIconButton(
                 icon: orchestraEnabled ? Icons.queue_music : Icons.queue_music_outlined,
@@ -1486,9 +1497,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   }
                 },
               ),
-              // Mic toggle for voice keyboard
-              () {
-                final recState = ref.watch(recordingProvider);
+              // Mic toggle for voice keyboard — shown only when Whisper STT is
+              // enabled (or a capture/transcription is actively in flight).
+              if (whisperEnabled || recState != RecordingState.idle) ...[
+                const SizedBox(width: 4),
+                () {
                 final isRecording = recState == RecordingState.recording;
                 final isTranscribing = recState == RecordingState.transcribing;
 
@@ -1553,6 +1566,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   },
                 );
               }(),
+              ],
               // Voice mode toggle: continuous listen → send → speak-reply,
               // cross-modal with typing (either way still works while this
               // is on). Separate from the mic button above, which is a

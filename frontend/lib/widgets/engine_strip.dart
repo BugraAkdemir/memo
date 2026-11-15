@@ -5,7 +5,9 @@ import 'package:path/path.dart' as p;
 import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/local_model.dart';
+import '../models/model_display.dart';
 import '../models/provider_config.dart';
+import '../models/provider_models.dart';
 import '../providers/chat_provider.dart';
 import '../providers/models_provider.dart';
 import '../providers/agent_provider.dart';
@@ -123,7 +125,11 @@ class EngineStrip extends ConsumerWidget {
                       },
                     )
                   else if (isApiProvider)
-                    _ApiProviderIndicator(providerType: activeProviderType)
+                    _ApiProviderIndicator(
+                      providerName: activeProviderType,
+                      providers:
+                          ref.watch(providerListProvider).valueOrNull ?? const [],
+                    )
                   else if (!embRunning)
                     _OfflineHint(onOpenModels: onOpenModels),
                   if (embRunning) ...[
@@ -340,35 +346,108 @@ class _CLIModeIndicator extends StatelessWidget {
 }
 
 class _ApiProviderIndicator extends StatelessWidget {
-  final String providerType;
-  const _ApiProviderIndicator({required this.providerType});
+  final String providerName;
+  final List<ProviderConfig> providers;
+  const _ApiProviderIndicator({
+    required this.providerName,
+    this.providers = const [],
+  });
 
   @override
   Widget build(BuildContext context) {
     final c = MemoTheme.of(context);
-    final displayName =
-        ProviderDefaults.displayNames[providerType] ?? providerType;
+    if (providerName == kAutoRouteProviderName) {
+      return Tooltip(
+        message: L10n.t('auto_route_help'),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: const BoxDecoration(
+                  color: MemoTheme.green, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.auto_awesome_outlined,
+                size: 15, color: MemoTheme.accent),
+            const SizedBox(width: 6),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 220),
+              child: Text(
+                L10n.t('auto_route'),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: c.textMain),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 7,
-          height: 7,
-          decoration: const BoxDecoration(
-              color: MemoTheme.green, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 8),
-        providerLogoWidget(providerType, size: 16),
-        const SizedBox(width: 6),
-        Text(
-          displayName,
-          style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: c.textMain),
-        ),
-      ],
+    ProviderConfig? match;
+    for (final cfg in providers) {
+      if (cfg.name == providerName || cfg.type == providerName) {
+        match = cfg;
+        break;
+      }
+    }
+    final providerType = match?.type ?? providerName;
+    final providerDisplay =
+        ProviderDefaults.displayNames[providerType] ?? providerName;
+    final rawModel = match?.model.trim() ?? '';
+    final String modelLabel;
+    if (rawModel.isEmpty) {
+      modelLabel = providerDisplay;
+    } else if (providerName == kSubscriptionsProviderName) {
+      modelLabel = prettyModelName(rawModel).label;
+    } else if (rawModel.contains('/') || rawModel.contains('\\')) {
+      final base = p.basename(rawModel);
+      modelLabel = base.isNotEmpty ? base : rawModel;
+    } else {
+      modelLabel = rawModel;
+    }
+
+    final isSubsModel =
+        providerName == kSubscriptionsProviderName && rawModel.isNotEmpty;
+    final tooltipText = rawModel.isNotEmpty && modelLabel != providerDisplay
+        ? '$providerDisplay · $rawModel'
+        : providerDisplay;
+
+    return Tooltip(
+      message: tooltipText,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: const BoxDecoration(
+                color: MemoTheme.green, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          isSubsModel
+              ? modelFamilyLogo(rawModel, size: 16)
+              : providerLogoWidget(providerType, size: 16),
+          const SizedBox(width: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 220),
+            child: Text(
+              modelLabel,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: c.textMain),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

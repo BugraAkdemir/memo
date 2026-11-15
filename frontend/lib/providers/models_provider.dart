@@ -70,6 +70,18 @@ final modelStatusProvider = StreamProvider.autoDispose<ServerStatus>((ref) async
   }
 });
 
+/// One-shot snapshot of the local model server status (no polling timer),
+/// safe to watch from widgets like [ChatInput] without keeping a background
+/// timer alive across short-lived widget tests.
+final modelStatusOnceProvider = FutureProvider.autoDispose<ServerStatus?>((ref) async {
+  if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return null;
+  try {
+    return await ref.read(apiClientProvider).getModelStatus();
+  } catch (_) {
+    return null;
+  }
+});
+
 final embeddingStatusProvider = StreamProvider.autoDispose<ServerStatus>((ref) async* {
   var alive = true;
   ref.onDispose(() => alive = false);

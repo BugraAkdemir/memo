@@ -6,6 +6,7 @@ import 'package:memo_flutter/core/l10n.dart';
 import 'package:memo_flutter/models/gpu_info.dart';
 import 'package:memo_flutter/models/local_model.dart';
 import 'package:memo_flutter/models/orchestra_config.dart';
+import 'package:memo_flutter/models/provider_config.dart';
 import 'package:memo_flutter/providers/models_provider.dart';
 import 'package:memo_flutter/providers/mood_provider.dart';
 import 'package:memo_flutter/providers/orchestra_provider.dart';
@@ -334,4 +335,46 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(SingleChildScrollView), findsOneWidget);
   });
+
+  testWidgets('shows active API/custom model name and truncates long names without overflow',
+      (tester) async {
+    await _pumpEngineStrip(
+      tester,
+      overrides: [
+        ...baseline(),
+        activeProviderTypeProvider.overrideWith(() => _StaticActiveProvider('CustomLocal')),
+        providerListProvider.overrideWith(
+          () => _StaticProviderList(const [
+            ProviderConfig(
+              type: 'custom',
+              name: 'CustomLocal',
+              model: '/home/user/models/Very-Long-Model-Name-120B-A12B-Instruct-IQ4_NL-Extra-Long-Suffix.gguf',
+              enabled: true,
+            ),
+          ]),
+        ),
+      ],
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(
+      find.text('Very-Long-Model-Name-120B-A12B-Instruct-IQ4_NL-Extra-Long-Suffix.gguf'),
+      findsOneWidget,
+    );
+  });
+}
+
+class _StaticActiveProvider extends ActiveProviderNotifier {
+  final String value;
+  _StaticActiveProvider(this.value);
+  @override
+  Future<String> build() async => value;
+}
+
+class _StaticProviderList extends ProviderListNotifier {
+  final List<ProviderConfig> items;
+  _StaticProviderList(this.items);
+  @override
+  Future<List<ProviderConfig>> build() async => items;
 }

@@ -59,15 +59,16 @@
 
 ---
 
-# Son oturum — 15 Kasım — Yerel modelde Effort seçimi, düşünme/canlı `t/s` düzeltmesi ve akış akıcılığı
-- **Yerel modelde Effort seçimi**:
-  - `internal/config/config.go` (`LlamaConfig.EffortLevel`, `LlamaConfigUpdate.EffortLevel`), `internal/app/llama.go` (`UpdateLlamaConfig`), `internal/api/types.go` (`ChatCompletionRequest.ReasoningEffort`), `internal/api/client.go` (`WithReasoningEffort`), `internal/app/llm.go` (`callLLMStream` yerel `llama.cpp` dalı) ve `internal/webserver/handlers_oauth.go` (`ptype == "local"` için standart effort seviyeleri; `ProviderCustom`/`ProviderCustomAnthropic` kendi `ptype`'ını korur).
-  - Flutter: `frontend/lib/core/api_client.dart` (`updateLlamaConfig(..., effortLevel:)`), `frontend/lib/providers/settings_provider.dart` (`LlamaSettings.effortLevel`), `frontend/lib/screens/chat_screen.dart` (`QuickEffortSelector` yerel modda da görünür, `llamaSettingsProvider` üzerinden okur/yazar).
-- **Yerel model + düşünme sırasında `t/s` düzeltmesi**:
-  - `internal/app/llm.go`: hem haricî hem yerel `llama.cpp` akışında `chunk.Thinking != "" && chunk.Content == ""` iken de `tokenCount++` artırılıyor (artık düşünme süresi token sayacına yansıyor).
-  - `frontend/lib/models/stream_timing.dart` + `frontend/lib/providers/chat_provider.dart` + `frontend/lib/widgets/stream_progress.dart`: `StreamTiming.firstTokenAt` eklendi; canlı `liveTps` hesabı `firstTokenAt ?? startedAt` üzerinden prompt eval/TTFT gecikmesini dışlıyor (`stream_progress_test.dart`'a yeni test eklendi).
-- **Akış akıcılığı ("dona dona gelme")**:
-  - `frontend/lib/providers/chat_provider.dart`: SSE döngüsünde `streamingContentProvider` / `streamingThinkingProvider` güncellemeleri ~50 ms aralıklara birleştirildi (döngü sonunda son flush ile).
+# Son oturum — 15 Kasım — Flutter arayüz sadeleştirme, yetenek bazlı giriş düğmeleri ve model adı gösterimi
+- **Giriş çubuğu (`ChatInput`, `frontend/lib/widgets/chat_input.dart`)**:
+  - `frontend/lib/models/model_capabilities.dart` (`ModelInputCapabilities`, `resolveModelInputCapabilities`) ve `frontend/lib/providers/models_provider.dart` (`modelStatusOnceProvider`, polling `Timer` olmadan tek seferlik kontrol) eklendi.
+  - Whisper kapalıyken (`whisperEnabledProvider == false` ve aktif kayıt yokken) mikrofon düğmesi gizleniyor; görsel ve dosya ekleme düğmeleri yalnız etkin model/sağlayıcı desteklediğinde görünüyor.
+- **Model seçici (`ModelPickerPanel`, `frontend/lib/widgets/model_picker.dart`)**:
+  - Daha hafif kenarlık/gölge, temizleme düğmeli arama alanı, ayırıcı çizgili ve adet rozetli bölüm başlıkları (`.toUpperCase()` korundu) ve daha yumuşak aktif/hover satır stili.
+- **Alt durum çubuğu (`EngineStrip`, `frontend/lib/widgets/engine_strip.dart`)**:
+  - `_ApiProviderIndicator` yalnızca sağlayıcı adı yerine etkin model adını (dosya yolunda basename, Subscriptions'ta `prettyModelName`) `maxWidth: 220`, `TextOverflow.ellipsis` ve tam ad için `Tooltip` ile gösteriyor.
+- **Üst çubuk (`ChatTopBar`, `frontend/lib/screens/chat_screen.dart`)**:
+  - `QuickEffortSelector` `maxWidth` 110 → 160 px genişletildi, dikey ayırıcı eklendi; ikincil masaüstü eylemleri (`Tasks`, `Undo`, `WhatsApp`, `Browser`, `Export`) etiketli `more_horiz` taşma menüsüne taşındı.
 - **Doğrulama**:
-  - `CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...`, `CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...` PASS; `go test -tags "sqlite_fts5" -race ./internal/api/... ./internal/webserver/... ./internal/app/... -run "TestFinishStream|TestHandleProviderEffortLevels|TestUpdateLlamaConfig"` PASS; tam `go test -tags "sqlite_fts5" ./... -race` koşusunda yalnız önceden bilinen `TestIntegration_LongHistoryGetsCompacted`, `TestChat_StreamCutMidAnswerKeepsWhatTheUserSaw`, `TestChat_EmptyReplyIsExplainedNotSavedBlank`, `internal/updater` (`node_modules`) ve ilgisiz `TestChatSubAgents_InheritSelectedProviderInsteadOfFirstEnabled` düştü, geri kalan tüm paketler (dahil `internal/webserver`, `internal/api`, `internal/config`) PASS.
-  - `flutter analyze lib/` (0 hata, yalnız önceden var olan 3 `use_build_context_synchronously` info), `flutter test` (`1040` PASS, 1 pre-existing skip) ve L10n literal kontrolü (0 yeni ihlal) PASS.
+  - Yeni/güncellenen testler: `test/models/model_capabilities_test.dart`, `test/widgets/chat_input_capabilities_test.dart`, `test/widgets/engine_strip_test.dart`, `test/screens/chat_top_bar_test.dart`.
+  - `flutter analyze lib/` (0 hata, yalnız önceden var olan 3 `use_build_context_synchronously` info), `flutter test` (`1049` PASS, 1 pre-existing skip) ve L10n literal kontrolü (0 yeni ihlal) PASS.

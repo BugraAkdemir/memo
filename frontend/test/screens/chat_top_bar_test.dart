@@ -223,14 +223,18 @@ void main() {
       await pump(tester, width: 1100);
       expect(find.byTooltip(L10n.t('agent_chat_marker')), findsOneWidget);
       expect(find.byTooltip(L10n.t('code_mode_off_tooltip')), findsOneWidget);
-      expect(find.byTooltip(L10n.t('taskloop_title')), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.more_horiz));
+      await tester.pumpAndSettle();
+      expect(find.text(L10n.t('taskloop_title')), findsOneWidget);
     });
 
     testWidgets('a plain chat has none of them', (tester) async {
       await pump(tester, width: 1100, projectPath: null);
       expect(find.byTooltip(L10n.t('agent_chat_marker')), findsNothing);
       expect(find.byTooltip(L10n.t('code_mode_off_tooltip')), findsNothing);
-      expect(find.byTooltip(L10n.t('taskloop_title')), findsNothing);
+      await tester.tap(find.byIcon(Icons.more_horiz));
+      await tester.pumpAndSettle();
+      expect(find.text(L10n.t('taskloop_title')), findsNothing);
     });
 
     testWidgets('the project chip does not depend on the global agent toggle', (tester) async {

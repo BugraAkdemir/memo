@@ -1009,9 +1009,9 @@ class QuickEffortSelector extends ConsumerWidget {
             ),
         ],
         child: Container(
-          margin: const EdgeInsets.only(right: 8),
+          margin: const EdgeInsets.only(right: 6),
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          constraints: const BoxConstraints(maxWidth: 110),
+          constraints: const BoxConstraints(maxWidth: 160),
           decoration: BoxDecoration(
             color: c.bgElement,
             borderRadius: BorderRadius.circular(8),
@@ -1279,124 +1279,150 @@ class ChatTopBar extends ConsumerWidget {
       }
     }
 
+    final hasOverflowItems =
+        (isAgentChat && activeChatId.isNotEmpty) ||
+        isAgentEnabled ||
+        (!isCLIChat && waStatus.asData?.value.connected == true) ||
+        betaOn ||
+        true; // Export is always available.
+
     final trailingActions = <Widget>[
       // Live token counter (Claude-Code style)
       const _TokenCounter(),
 
-      // CLI working directory — always visible which folder a CLI
-      // provider is actually operating in, right next to the picker
-      // that shows which one it is.
       if (isCLIChat) const _CLIWorkdirBadge(),
-
-      // Which model the CLI itself is using for this chat, tappable to
-      // switch — the CLI's own equivalent of the provider picker below.
       if (isCLIChat) const _CLIModelBadge(),
 
-      // Quick model/provider switch dropdown — local model, every
-      // enabled API provider, and a shortcut to add a new one.
-      const QuickModelDropdown(),
-
-      // Reasoning-effort quick-select — only renders itself when the active
-      // provider/model actually has effort levels to offer.
+      const QuickModelDropdown(maxWidth: 200),
       const QuickEffortSelector(),
 
-      // Agent (project) chats: Code Mode and the task list, which used to live
-      // only on the separate Agent screen.
-      if (isAgentChat && activeChatId.isNotEmpty) CodeModeToggle(chatId: activeChatId),
+      if (!isCLIChat || (isAgentChat && activeChatId.isNotEmpty))
+        Container(
+          width: 1,
+          height: 18,
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          color: c.borderSoft,
+        ),
+
       if (isAgentChat && activeChatId.isNotEmpty)
-        IconButton(
-          icon: const Icon(Icons.checklist, size: 20),
-          tooltip: L10n.t('taskloop_title'),
-          color: MemoTheme.of(context).textDim,
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => TasksScreen(initialChatId: activeChatId)),
-          ),
-        ),
+        CodeModeToggle(chatId: activeChatId),
 
-      // Undo button (only when agent mode is on)
-      if (isAgentEnabled)
-        IconButton(
-          icon: Icon(Icons.undo, size: 20),
-          color: MemoTheme.of(context).textDim,
-          tooltip: L10n.t('agent_undo'),
-          onPressed: handleUndo,
-        ),
-
-      // Agent mode toggle — was previously only reachable from the
-      // separate Agent tab, so plain Chat had no visible way to turn on
-      // file/command tools; this mirrors the web-search toggle right
-      // next to it. Session-scoped like web search, not persisted onto
-      // this specific chat: switching away and back re-derives it from
-      // the chat's own type (ActiveChatIdNotifier.switchTo). Hidden for
-      // a CLI-backed chat — see isCLIChat's doc comment above.
       if (!isCLIChat)
         IconButton(
+          visualDensity: VisualDensity.compact,
           icon: Icon(
             Icons.smart_toy,
-            size: 20,
-            color: isAgentEnabled
-                ? MemoTheme.green
-                : MemoTheme.of(context).textDim,
+            size: 19,
+            color: isAgentEnabled ? MemoTheme.green : c.textDim,
           ),
-          tooltip: '${isAgentEnabled ? L10n.t('agent_mode_on') : L10n.t('agent_mode_off')} — ${L10n.t('agent_mode_tooltip')}',
-          onPressed: () => ref.read(agentEnabledProvider.notifier).setEnabled(!isAgentEnabled),
+          tooltip:
+              '${isAgentEnabled ? L10n.t('agent_mode_on') : L10n.t('agent_mode_off')} — ${L10n.t('agent_mode_tooltip')}',
+          onPressed: () =>
+              ref.read(agentEnabledProvider.notifier).setEnabled(!isAgentEnabled),
         ),
 
-      // Web search mode toggle — when on, every message uses live web results
       if (!isCLIChat)
         IconButton(
+          visualDensity: VisualDensity.compact,
           icon: Icon(
             Icons.travel_explore,
-            size: 20,
-            color: webSearchOn
-                ? MemoTheme.green
-                : MemoTheme.of(context).textDim,
+            size: 19,
+            color: webSearchOn ? MemoTheme.green : c.textDim,
           ),
           tooltip: webSearchOn
-              ? (L10n.t('web_search_on'))
-              : (L10n.t('web_search_off')),
+              ? L10n.t('web_search_on')
+              : L10n.t('web_search_off'),
           onPressed: () => ref.read(webSearchModeProvider.notifier).toggle(),
         ),
 
-      // WhatsApp mode toggle (only when connected)
-      if (!isCLIChat && waStatus.asData?.value.connected == true)
-        IconButton(
-          icon: Icon(
-            Icons.chat,
-            size: 20,
-            color: isWhatsAppMode ? MemoTheme.green : MemoTheme.of(context).textDim,
+      if (hasOverflowItems)
+        PopupMenuButton<String>(
+          tooltip: L10n.t('more_actions'),
+          icon: Icon(Icons.more_horiz, size: 20, color: c.textDim),
+          color: c.bgPanel,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: c.borderSoft),
           ),
-          tooltip: isWhatsAppMode
-              ? '${L10n.t('whatsapp_mode_on')} — ${L10n.t('whatsapp_mode_tooltip')}'
-              : '${L10n.t('whatsapp_mode_off')} — ${L10n.t('whatsapp_mode_tooltip')}',
-          onPressed: () => ref.read(whatsAppChatModeProvider.notifier).toggle(),
+          onSelected: (value) {
+            switch (value) {
+              case 'tasks':
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => TasksScreen(initialChatId: activeChatId),
+                  ),
+                );
+              case 'undo':
+                handleUndo();
+              case 'whatsapp':
+                ref.read(whatsAppChatModeProvider.notifier).toggle();
+              case 'browser':
+                browserPaneActive
+                    ? closeBrowserPane(ref)
+                    : openBrowserPane(ref);
+              case 'export':
+                handleExport();
+            }
+          },
+          itemBuilder: (_) => [
+            if (isAgentChat && activeChatId.isNotEmpty)
+              PopupMenuItem(
+                value: 'tasks',
+                child: _QuickModelMenuRow(
+                  leading: Icon(Icons.checklist, size: 18, color: c.textMuted),
+                  label: L10n.t('taskloop_title'),
+                  isActive: false,
+                ),
+              ),
+            if (isAgentEnabled)
+              PopupMenuItem(
+                value: 'undo',
+                child: _QuickModelMenuRow(
+                  leading: Icon(Icons.undo, size: 18, color: c.textMuted),
+                  label: L10n.t('agent_undo'),
+                  isActive: false,
+                ),
+              ),
+            if (!isCLIChat && waStatus.asData?.value.connected == true)
+              PopupMenuItem(
+                value: 'whatsapp',
+                child: _QuickModelMenuRow(
+                  leading: Icon(
+                    Icons.chat,
+                    size: 18,
+                    color: isWhatsAppMode ? MemoTheme.green : c.textMuted,
+                  ),
+                  label: isWhatsAppMode
+                      ? L10n.t('whatsapp_mode_on')
+                      : L10n.t('whatsapp_mode_off'),
+                  isActive: isWhatsAppMode,
+                ),
+              ),
+            if (betaOn)
+              PopupMenuItem(
+                value: 'browser',
+                child: _QuickModelMenuRow(
+                  leading: Icon(
+                    Icons.public,
+                    size: 18,
+                    color: browserPaneActive ? MemoTheme.green : c.textMuted,
+                  ),
+                  label: browserPaneActive
+                      ? L10n.t('browser_pane_close')
+                      : L10n.t('browser_pane_open'),
+                  isActive: browserPaneActive,
+                ),
+              ),
+            PopupMenuItem(
+              value: 'export',
+              child: _QuickModelMenuRow(
+                leading: Icon(Icons.file_download_outlined, size: 18, color: c.textMuted),
+                label: L10n.t('export_chat'),
+                isActive: false,
+              ),
+            ),
+          ],
         ),
-
-      // Manual browser-pane toggle — independent of agent mode entirely
-      // (unlike the toggles above, it doesn't change how the chat request
-      // itself is built), so it's shown even for a CLI-backed chat. Opening
-      // it costs nothing (openBrowserPane starts no backend process); the
-      // agent can also open/drive the same pane on its own via
-      // browser_navigate — both paths converge on the same
-      // browserSessionActiveProvider.
-      if (betaOn)
-        IconButton(
-          icon: Icon(
-            Icons.public,
-            size: 20,
-            color: browserPaneActive ? MemoTheme.green : MemoTheme.of(context).textDim,
-          ),
-          tooltip: browserPaneActive ? L10n.t('browser_pane_close') : L10n.t('browser_pane_open'),
-          onPressed: () => browserPaneActive ? closeBrowserPane(ref) : openBrowserPane(ref),
-        ),
-
-      // Export button
-      IconButton(
-        icon: Icon(Icons.file_download_outlined, size: 20),
-        color: MemoTheme.of(context).textDim,
-        tooltip: L10n.t('export_chat'),
-        onPressed: handleExport,
-      ),
     ];
 
     // Mobile overflow sheet: everything from trailingActions except the

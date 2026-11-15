@@ -59,7 +59,8 @@
 
 ---
 
-# Son oturum — 15 Kasım — Minimal Mod hız/token izolasyonu + Auth/Tur kalıcılığı
-- Minimal Mod + `api.Client` (`850f32b4`): `internal/api/types.go` + `streaming.go` `delta.reasoning_content`/`reasoning` akışı eklendi; `internal/app/chat.go` `routeStreamInner` içinde `agentActive` (non-force/code) ve `communicationToolNames` `!minimal` ile sınırlandı; `internal/app/llm.go` `finishStream` altında Minimal Mod'da başlık LLM çağrısı (`nameCodeChat` kullanır) ve `updateMoodAsync` kapatıldı.
-- Auth gate & Tur/Launchpad kalıcılığı (`38e560c4`): loopback-only `POST /api/setup/decline` (`App.DeclineSetup`, `SetupBootstrapped=true`) eklendi ve `AuthGateOverlay._decline()` buna bağlandı; `OnboardingConfig` ve `GET/PUT /api/onboarding` içine `tour_seen` + `launchpad_seen` eklendi; `SetupCompleteNotifier._init`, `TourSeenNotifier`, `LaunchpadSeenNotifier` backend ile senkronize edildi; `AppShell` `setupCompleteProvider` `true->false` dinleyicisindeki `tour/launchpad` sıfırlaması kaldırıldı.
-- Doğrulama: `go build -tags "sqlite_fts5" ./...` PASS; `go test -tags "sqlite_fts5" -race` `internal/api` + `internal/webserver` + `internal/config` + `internal/e2e` (bilinen 3 pre-existing atlanarak) PASS; `flutter analyze lib/` yalnız 3 eski info; `flutter test` (`setup_complete_provider_test`, `setup_wizard_test`, `app_shell_lazy_tabs_test`, `auth_gate_overlay_test`: 40/40) PASS; L10n literal check temiz. Önceden mevcut `internal/app` test derleme hataları (`context_report_test.go:121`, `llm_test.go:801`) kapsam dışı açık.
+# Son oturum — 15 Kasım — `t/s` (tokens/sec) hesaplamasından prompt eval / TTFT gecikmesinin çıkarılması
+- `internal/app/llm.go`: `drainAgentStream`, `callLLMStream` haricî sağlayıcı akışı ve yerel `llama.cpp` akışında ilk üretilen token (`chunk.Thinking != ""` veya `chunk.Content != ""`) zamanı `firstGenAt` olarak yakalanıp `withEvalStart` ile `finishStream` bağlamına geçirildi.
+- `finishStream`: `evalStartFromCtx(ctx)` mevcutsa, `completionTokens > 1` ve `evalDur > 0.01s` iken `tps = float64(completionTokens-1) / evalDur` hesaplanıyor (`llama.cpp` `eval time` ölçümüyle uyumlu); aksi hâlde toplam süreye geri düşülüyor.
+- `internal/app/llm_test.go`: `TestFinishStream_TokensPerSecondExcludesPromptEval` eklendi.
+- Doğrulama: `CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...`, `CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...` ve `CGO_ENABLED=1 go test -tags "sqlite_fts5" -race ./internal/app/... -run "TestFinishStream|TestCallLLMStream|TestContextReport|TestSendMessage_.*MinimalMode"` PASS (`ok memo/internal/app 2.248s`).

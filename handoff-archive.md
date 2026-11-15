@@ -1,3 +1,11 @@
+# Son oturum — 15 Kasım — Özel (Custom OpenAI) haricî llama.cpp bağlam algılama + 8k Kompakt Profil
+- `internal/provider/context_window.go`: `openAIProvider.ContextWindow`, `ProviderCustom` için `/models` içinde pencere alanı yoksa ortak `fetchLlamaPropsWindow` üzerinden `llama-server` `/props` (`default_generation_settings.n_ctx` / `n_ctx`) değerini okuyor; `context_window_test.go`'ya `TestContextWindow_CustomFallsBackToLlamaServerProps` eklendi.
+- `internal/app/compact_mode.go` + `internal/app/helpers.go`: `localCompactActive()`, `compactTurnWindow(ctx)` ve `buildMessagesForSession` artık `0 < window < 10000` döndüren etkin haricî/özel sağlayıcıları da kompakt profile geçiriyor (`BuildCompactSystemPrompt`, `compactMemoryShare`, `compactSkillShare`, `compactToolsFor`, arka plan başlık/çıkarım engeli); `compact_mode_test.go`'ya `TestBuildMessagesForSession_CustomProvider8kGetsCompactProfile` eklendi.
+- `internal/app/providers.go`: `UpdateProvider` (etkinse) ve `SetActiveProvider` arka planda `provider.CachedContextWindow` önbelleğini ısıtıyor.
+- Doğrulama: `CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...`, `CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...` ve `CGO_ENABLED=1 go test -tags "sqlite_fts5" -race ./internal/provider/... ./internal/app/... -run "TestContextWindow|TestCachedContextWindow|TestIsCompactWindow|TestBuildMessagesForSession|TestContextReport|TestContextBudget"` PASS (`internal/provider` + `internal/app 1.435s`).
+
+---
+
 # Son oturum — 15 Kasım — `t/s` (tokens/sec) hesaplamasından prompt eval / TTFT gecikmesinin çıkarılması
 - `internal/app/llm.go`: `drainAgentStream`, `callLLMStream` haricî sağlayıcı akışı ve yerel `llama.cpp` akışında ilk üretilen token (`chunk.Thinking != ""` veya `chunk.Content != ""`) zamanı `firstGenAt` olarak yakalanıp `withEvalStart` ile `finishStream` bağlamına geçirildi.
 - `finishStream`: `evalStartFromCtx(ctx)` mevcutsa, `completionTokens > 1` ve `evalDur > 0.01s` iken `tps = float64(completionTokens-1) / evalDur` hesaplanıyor (`llama.cpp` `eval time` ölçümüyle uyumlu); aksi hâlde toplam süreye geri düşülüyor.

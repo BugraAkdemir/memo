@@ -59,8 +59,8 @@
 
 ---
 
-# Son oturum — 15 Kasım — Özel (Custom OpenAI) haricî llama.cpp bağlam algılama + 8k Kompakt Profil
-- `internal/provider/context_window.go`: `openAIProvider.ContextWindow`, `ProviderCustom` için `/models` içinde pencere alanı yoksa ortak `fetchLlamaPropsWindow` üzerinden `llama-server` `/props` (`default_generation_settings.n_ctx` / `n_ctx`) değerini okuyor; `context_window_test.go`'ya `TestContextWindow_CustomFallsBackToLlamaServerProps` eklendi.
-- `internal/app/compact_mode.go` + `internal/app/helpers.go`: `localCompactActive()`, `compactTurnWindow(ctx)` ve `buildMessagesForSession` artık `0 < window < 10000` döndüren etkin haricî/özel sağlayıcıları da kompakt profile geçiriyor (`BuildCompactSystemPrompt`, `compactMemoryShare`, `compactSkillShare`, `compactToolsFor`, arka plan başlık/çıkarım engeli); `compact_mode_test.go`'ya `TestBuildMessagesForSession_CustomProvider8kGetsCompactProfile` eklendi.
-- `internal/app/providers.go`: `UpdateProvider` (etkinse) ve `SetActiveProvider` arka planda `provider.CachedContextWindow` önbelleğini ısıtıyor.
-- Doğrulama: `CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...`, `CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...` ve `CGO_ENABLED=1 go test -tags "sqlite_fts5" -race ./internal/provider/... ./internal/app/... -run "TestContextWindow|TestCachedContextWindow|TestIsCompactWindow|TestBuildMessagesForSession|TestContextReport|TestContextBudget"` PASS (`internal/provider` + `internal/app 1.435s`).
+# Son oturum — 15 Kasım — Vulkan / GPU model yükleme hatasında otomatik CPU (`--device none`) geri dönüşü
+- Kök neden: `data/llama-8081.log` üzerinde doğrulandı; AMD Cezanne iGPU'da `libggml-vulkan.so` ile büyük model (`Qwen3.6-35B-A3B`) açılırken `radv/amdgpu: Not enough memory for command submission.` / `vk::Queue::submit: ErrorDeviceLost` ile çıkıyordu (`start-web.sh` `-dev none -ngl 0` kullandığı için çalışıyordu).
+- `internal/llama/llama.go`: `Server` başlatma logunun başlangıç ofsetini (`logPath`, `logStartOffset`) tutuyor; `WaitReadyContext` çıkışta `StartupFailureTail()` son satırlarını logluyor; `IsGPUStartupFailure` GPU/Vulkan/VRAM hatalarını algılıyor; başlangıç logundaki `GPU layers` artık `actualGPU` yazıyor.
+- `internal/app/llama.go` + `internal/app/auto_route.go`: `startLlamaWithCPUFallback` eklendi — GPU/Vulkan yükleme hatası algılanınca `StartLocalModel` ve `startAutoRouteLocal` otomatik olarak `engineMode="cpu"`, `gpuLayers=0` (`--device none`) ile yeniden deniyor.
+- Doğrulama: `CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...`, `CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...` ve `CGO_ENABLED=1 go test -tags "sqlite_fts5" -race ./internal/llama/...` PASS (`5.521s`).

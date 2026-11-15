@@ -283,12 +283,17 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		toolTokens = a.agentToolTokens(chatID)
 	}
 
-	// Compact profile (compact_mode.go): a local model with a small window.
-	// Decided from the window alone, which only changes when a model is loaded,
-	// so the system prompt it selects stays byte-stable across the chat. A local
-	// server that is running while a cloud provider answers does not count.
+	// Compact profile (compact_mode.go): a model with a small real window
+	// (< compactWindowLimit) — either the built-in local server, an active
+	// external/custom server (e.g. external llama.cpp via Custom OpenAI), or
+	// the auto router's local route. Decided from the window alone, which only
+	// changes when a model is loaded, so the system prompt it selects stays
+	// byte-stable across the chat. A local server that is running while a
+	// cloud provider answers does not count.
 	compact := isCompactWindow(window) &&
-		((localPrompt && a.GetActiveProvider() == "") || (route != nil && route.auto && routeProvider(route) == "local"))
+		((localPrompt && a.GetActiveProvider() == "") ||
+			(!localPrompt && route == nil && a.GetActiveProvider() != "") ||
+			(route != nil && route.auto && routeProvider(route) == "local"))
 	if compact {
 		// Tools: load_tools plus the groups this chat loaded, not the full
 		// ~10k-token schema (compact_mode.go). The local path had the full
@@ -296,6 +301,10 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		compactTools := a.compactAgentToolTokens(ctx, chatID)
 		if localPrompt {
 			tokenBudget += toolTokens - compactTools
+		} else if route == nil {
+			// External small-context server: keep the same ~5% margin below
+			// n_ctx as localPrompt so len/3 undercounting cannot overflow.
+			tokenBudget -= max(window/20, 256)
 		}
 		toolTokens = compactTools
 		tokenBudget -= compactReplyReserve(window)
@@ -305,15 +314,14 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	}
 
 	// Memory-block budget: a fraction of this turn's real tokenBudget on a
-	// local model, so memory can never alone consume a small model's whole
-	// window — capped at identity.MaxMemoryContextTokens (never grow memory
-	// beyond what that ceiling already considers reasonable just because a
-	// local model happens to have a huge context). 0 tells BuildSystemPrompt
-	// to fall back to its own default, which is what every non-local
-	// (API/orchestra) turn already relied on before this fix and is left
-	// unchanged here.
+	// local or compact-window model, so memory can never alone consume a small
+	// model's whole window — capped at identity.MaxMemoryContextTokens (never
+	// grow memory beyond what that ceiling already considers reasonable just
+	// because a local model happens to have a huge context). 0 tells
+	// BuildSystemPrompt to fall back to its own default, which is what large
+	// API/orchestra turns rely on.
 	memoryBudget := 0
-	if localBudget {
+	if localBudget || compact {
 		memoryBudget = tokenBudget * 2 / 5
 		if memoryBudget > identity.MaxMemoryContextTokens {
 			memoryBudget = identity.MaxMemoryContextTokens
@@ -334,10 +342,10 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	// budget several times over on a bare "selam". Smaller share than
 	// memory's 2/5 — skill instructions are supplementary tool-use
 	// guidance, not core to the conversation the way personal memory is.
-	// 0 (every non-local turn) keeps buildActiveSkillPrompt's pre-existing
-	// unbounded behavior, which is fine against a huge API context window.
+	// 0 (every non-local, non-compact turn) keeps buildActiveSkillPrompt's
+	// pre-existing unbounded behavior, which is fine against a huge API window.
 	skillBudget := 0
-	if localBudget {
+	if localBudget || compact {
 		skillBudget = tokenBudget / 5
 		if compact {
 			skillBudget = compactSkillShare(window)

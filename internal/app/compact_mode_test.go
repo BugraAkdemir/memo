@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -9,6 +11,7 @@ import (
 	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/identity"
+	"memo/internal/provider"
 	"memo/internal/sessions"
 	"memo/internal/truncate"
 )
@@ -179,5 +182,67 @@ func TestBuildMessagesForSession_LargeWindowAgentTurnKeepsFullSchema(t *testing.
 	a.ctxState.mu.Unlock()
 	if snap.compact || snap.tools != a.agentToolTokens(chatID) {
 		t.Errorf("32k window: compact=%v tools=%d, want false and the full %d", snap.compact, snap.tools, a.agentToolTokens(chatID))
+	}
+}
+
+func TestBuildMessagesForSession_CustomProvider8kGetsCompactProfile(t *testing.T) {
+	provider.ResetContextWindowCache()
+	t.Cleanup(provider.ResetContextWindowCache)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Write([]byte(`{"data":[{"id":"qwen3.6-35b"}]}`))
+		case "/props":
+			w.Write([]byte(`{"default_generation_settings":{"n_ctx":8192}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	pcm := provider.NewConfigManager(t.TempDir()+"/providers.json", nil)
+	cfg := provider.ProviderConfig{
+		Name:    "Özel (OpenAI uyumlu)",
+		Type:    provider.ProviderCustom,
+		BaseURL: srv.URL + "/v1",
+		APIKey:  "k",
+		Model:   "qwen3.6-35b",
+		Enabled: true,
+	}
+	if err := pcm.Set(cfg); err != nil {
+		t.Fatalf("pcm.Set: %v", err)
+	}
+	if n, src := provider.WarmContextWindow(context.Background(), cfg, cfg.Model); n != 8192 || src != "api" {
+		t.Fatalf("WarmContextWindow = (%d, %q), want (8192, \"api\")", n, src)
+	}
+
+	a, _, chatID := newCompactTestApp(t)
+	a.activeProviderName = cfg.Name
+	a.providerCfgMgr = pcm
+	a.agentEnabled = true
+	a.agentExecutor = agent.NewExecutor(t.TempDir(), nil, nil, nil)
+
+	if !a.localCompactActive() {
+		t.Fatal("localCompactActive() = false, want true for 8k custom llama-server")
+	}
+	if got := a.compactTurnWindow(context.Background()); got != 8192 {
+		t.Fatalf("compactTurnWindow = %d, want 8192", got)
+	}
+
+	msgs := a.buildMessagesForSession(context.Background(), chatID, "selam naber", nil, nil)
+	sys := systemOf(t, msgs)
+	if want := a.identity.BuildCompactSystemPrompt(true); sys != want {
+		t.Fatalf("8k custom provider must get compact prompt;\ngot  %q\nwant %q", sys, want)
+	}
+
+	a.ctxState.mu.Lock()
+	snap := a.ctxState.snaps[chatID]
+	a.ctxState.mu.Unlock()
+	if !snap.compact || snap.window != 8192 {
+		t.Errorf("snap: compact=%v window=%d, want (true, 8192)", snap.compact, snap.window)
+	}
+	if snap.tools <= 0 || snap.tools > compactToolShare(8192) {
+		t.Errorf("snap.tools = %d, want in (0, %d]", snap.tools, compactToolShare(8192))
 	}
 }

@@ -304,7 +304,8 @@ func sameModelID(a, b string) bool {
 
 // ContextWindow reads the window from the model's entry on /models. OpenAI's
 // own list carries none (0, nil — the catalogue answers); OpenRouter, Groq,
-// Mistral, Together, vLLM and others do.
+// Mistral, Together, vLLM and others do. For custom OpenAI-compatible servers
+// (e.g. an external llama-server), /models omits n_ctx so fall back to /props.
 func (p *openAIProvider) ContextWindow(ctx context.Context, model string) (int, error) {
 	if model == "" {
 		model = p.model
@@ -312,13 +313,23 @@ func (p *openAIProvider) ContextWindow(ctx context.Context, model string) (int, 
 	var list struct {
 		Data []map[string]any `json:"data"`
 	}
-	if err := fetchJSON(ctx, p.client, http.MethodGet, p.baseURL+"/models", nil, p.setAuth, &list); err != nil {
-		return 0, err
-	}
-	for _, m := range list.Data {
-		if id, _ := m["id"].(string); sameModelID(id, model) {
-			return windowOfEntry(m), nil
+	modelsErr := fetchJSON(ctx, p.client, http.MethodGet, p.baseURL+"/models", nil, p.setAuth, &list)
+	if modelsErr == nil {
+		for _, m := range list.Data {
+			if id, _ := m["id"].(string); sameModelID(id, model) {
+				if w := windowOfEntry(m); w > 0 {
+					return w, nil
+				}
+			}
 		}
+	}
+	if p.provType == ProviderCustom && p.cfg.Name != "Subscriptions" {
+		if w, err := fetchLlamaPropsWindow(ctx, p.client, p.baseURL, p.setAuth); err == nil && w > 0 {
+			return w, nil
+		}
+	}
+	if modelsErr != nil {
+		return 0, modelsErr
 	}
 	return 0, nil
 }
@@ -380,13 +391,17 @@ func (p *ollamaProvider) ContextWindow(ctx context.Context, model string) (int, 
 // ContextWindow reads llama-server's running window from /props
 // (default_generation_settings.n_ctx; older builds put n_ctx at the top).
 func (p *llamaCPPProvider) ContextWindow(ctx context.Context, model string) (int, error) {
+	return fetchLlamaPropsWindow(ctx, p.client, p.baseURL, p.setAuth)
+}
+
+func fetchLlamaPropsWindow(ctx context.Context, client *http.Client, baseURL string, setAuth func(*http.Request)) (int, error) {
 	var props struct {
 		NCtx     int `json:"n_ctx"`
 		Settings struct {
 			NCtx int `json:"n_ctx"`
 		} `json:"default_generation_settings"`
 	}
-	if err := fetchJSON(ctx, p.client, http.MethodGet, serverOrigin(p.baseURL)+"/props", nil, p.setAuth, &props); err != nil {
+	if err := fetchJSON(ctx, client, http.MethodGet, serverOrigin(baseURL)+"/props", nil, setAuth, &props); err != nil {
 		return 0, err
 	}
 	if props.Settings.NCtx > 0 {

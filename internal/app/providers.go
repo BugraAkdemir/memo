@@ -98,6 +98,9 @@ func (a *App) UpdateProvider(cfg provider.ProviderConfig) error {
 	if hctx != nil {
 		goRecover("providerRouter.HealthCheck", func() { rt.HealthCheck(hctx, 5*time.Minute) })
 	}
+	if cfg.Enabled {
+		_, _ = provider.CachedContextWindow(cfg, cfg.Model)
+	}
 	return nil
 }
 
@@ -320,6 +323,14 @@ func (a *App) SetActiveProvider(name string) {
 	a.cfgMu.Unlock()
 	if err := saveErr; err != nil {
 		logx.Printf("WARN: failed to persist active provider: %v", err)
+	}
+	if name != "" && a.providerCfgMgr != nil {
+		for _, p := range a.providerCfgMgr.GetEnabled() {
+			if p.Name == name {
+				_, _ = provider.CachedContextWindow(p, p.Model)
+				break
+			}
+		}
 	}
 	logx.Printf("Active provider set to: %s", name)
 }

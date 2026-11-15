@@ -52,13 +52,20 @@ func clipToTokens(s string, maxTokens int) string {
 	return truncate.Text(s, maxTokens*3)
 }
 
-// localCompactActive reports whether turns right now go to a running local
-// model with a compact window and no cloud provider in front of it. Used by
-// the work that happens outside buildMessagesForSession — the chat title and
-// fact extraction — which would otherwise queue an extra request on the one
-// local inference slot, minutes long on a CPU.
+// localCompactActive reports whether turns right now go to a model with a
+// compact window — either the built-in llama-server (with no external provider
+// in front of it) or an active external/custom local server whose published
+// context window is below compactWindowLimit. Used by the work that happens
+// outside buildMessagesForSession — the chat title and fact extraction — which
+// would otherwise queue an extra request on a slow local slot.
 func (a *App) localCompactActive() bool {
-	if a.llamaServer == nil || !a.llamaServer.IsRunning() || a.GetActiveProvider() != "" {
+	if active := a.GetActiveProvider(); active != "" {
+		if active == AutoRouteProvider {
+			return false
+		}
+		return isCompactWindow(a.knownContextWindow())
+	}
+	if a.llamaServer == nil || !a.llamaServer.IsRunning() {
 		return false
 	}
 	return isCompactWindow(a.localContextWindow())
@@ -70,8 +77,7 @@ func compactToolShare(window int) int { return window / 5 }
 
 // compactTurnWindow is the window of a turn that runs in the compact profile,
 // or 0 when the turn is not one: the auto router's local route with a small
-// window, or no route at all and a small running local model with no cloud
-// provider in front of it (localCompactActive).
+// window, or no route at all and a small-window active model (localCompactActive).
 func (a *App) compactTurnWindow(ctx context.Context) int {
 	if r := subscriptionTextRouteFromCtx(ctx); r != nil {
 		if r.auto && routeProvider(r) == "local" && isCompactWindow(routeWindow(r)) {
@@ -80,6 +86,9 @@ func (a *App) compactTurnWindow(ctx context.Context) int {
 		return 0
 	}
 	if a.localCompactActive() {
+		if a.GetActiveProvider() != "" {
+			return a.knownContextWindow()
+		}
 		return a.localContextWindow()
 	}
 	return 0

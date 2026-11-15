@@ -31,6 +31,10 @@ func windowOf(t *testing.T, cfg ProviderConfig, model string) int {
 
 func TestContextWindow_OpenAICompatibleReadsTheModelsEntry(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/props" {
+			http.NotFound(w, r)
+			return
+		}
 		if r.URL.Path != "/v1/models" {
 			t.Errorf("unexpected path %s", r.URL.Path)
 		}
@@ -86,6 +90,24 @@ func TestContextWindow_OllamaPrefersTheRunningWindow(t *testing.T) {
 	psLoaded = false
 	if got := windowOf(t, cfg, "llama3.2:latest"); got != 8192 {
 		t.Errorf("Modelfile num_ctx: got %d, want 8192", got)
+	}
+}
+
+func TestContextWindow_CustomFallsBackToLlamaServerProps(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Write([]byte(`{"data":[{"id":"/models/Qwen3.6-35B-A3B.gguf"}]}`))
+		case "/props":
+			w.Write([]byte(`{"default_generation_settings":{"n_ctx":8192}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	cfg := ProviderConfig{Type: ProviderCustom, BaseURL: srv.URL + "/v1", APIKey: "k"}
+	if got := windowOf(t, cfg, "/models/Qwen3.6-35B-A3B.gguf"); got != 8192 {
+		t.Errorf("custom llama-server: got %d, want 8192", got)
 	}
 }
 

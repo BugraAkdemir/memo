@@ -902,7 +902,7 @@ class QuickModelDropdown extends ConsumerWidget {
 /// their control instead of showing an empty menu.
 class _EffortState {
   const _EffortState(this.config, this.levels, this.current);
-  final ProviderConfig config;
+  final ProviderConfig? config; // null when active mode is local llama.cpp
   final List<String> levels;
   final String current;
 }
@@ -910,7 +910,17 @@ class _EffortState {
 _EffortState? _readEffort(WidgetRef ref) {
   final activeName = ref.watch(activeProviderTypeProvider).valueOrNull ?? '';
   final cliType = ref.watch(activeChatCLIProviderProvider).valueOrNull ?? '';
-  if (activeName.isEmpty || cliType.isNotEmpty) return null;
+  if (cliType.isNotEmpty) return null;
+
+  if (activeName.isEmpty) {
+    final levelsAsync = ref.watch(effortLevelsProvider(('local', '')));
+    final levels = levelsAsync.valueOrNull ?? const <String>[];
+    if (levels.isEmpty) return null;
+    final llama = ref.watch(llamaSettingsProvider).valueOrNull;
+    final saved = llama?.effortLevel ?? '';
+    final current = levels.contains(saved) ? saved : '';
+    return _EffortState(null, levels, current);
+  }
 
   final providers = ref.watch(providerListProvider).valueOrNull ?? const <ProviderConfig>[];
   final match = providers.where((p) => p.name == activeName);
@@ -934,10 +944,15 @@ _EffortState? _readEffort(WidgetRef ref) {
 /// Takes the [ProviderContainer] rather than a WidgetRef: the phone's effort
 /// list is a second sheet that outlives the row which opened it, and a
 /// WidgetRef must not be used once its widget is gone.
-Future<void> _setEffort(ProviderContainer container, ProviderConfig config, String value) async {
+Future<void> _setEffort(ProviderContainer container, ProviderConfig? config, String value) async {
   try {
-    await container.read(apiClientProvider).updateProvider(config.copyWith(effortLevel: value));
-    container.invalidate(providerListProvider);
+    if (config == null) {
+      await container.read(apiClientProvider).updateLlamaConfig(effortLevel: value);
+      container.invalidate(llamaSettingsProvider);
+    } else {
+      await container.read(apiClientProvider).updateProvider(config.copyWith(effortLevel: value));
+      container.invalidate(providerListProvider);
+    }
   } catch (e) {
     container.read(errorMessageProvider.notifier).state =
         L10n.t('switch_failed', {'e': FriendlyError.describeGeneric(e)});

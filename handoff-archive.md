@@ -1,3 +1,11 @@
+# Son oturum — 15 Kasım — `auto` motor seçiminde Windows/macOS/Linux GPU önceliği + Windows DCH `nvidia-smi`
+- Kök neden: `listGPUDevices` Windows/macOS üzerinde `ok=false` döndüğü için `resolveBinary(..., "auto")` `flavors = ["amd", "nvidia", "cpu"]` sırasından ilk mevcut klasörü (`amd`) alıp `nvidia`/`metal`/`cpu` seçimini hiç gözetmiyordu; ayrıca `detectNVIDIA` Windows'ta modern DCH sürücülerinin kurduğu `%SystemRoot%\System32\nvidia-smi.exe` yolunu kontrol etmiyordu.
+- `internal/llama/llama.go`: `autoFlavorOrder(goos, gpuType)` + `detectGPUForFlavor` eklendi — Windows/macOS'ta `DetectGPU().Type` sonucuna göre `nvidia`/`amd`/`metal`/`cpu` sırasıyla seçim yapılıyor; Linux'ta `gpuSelector` `"cpu"`'yu sonda tutarak `--list-devices` yoklamasını koruyor (NVIDIA'da `"nvidia"` önce deneniyor).
+- `internal/llama/gpu.go`: `detectNVIDIA` Windows yollarına `%SystemRoot%\System32\nvidia-smi.exe` eklendi; `llama_test.go`'ya `TestAutoFlavorOrder` eklendi.
+- Doğrulama: `CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...`, `CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...`, `CGO_ENABLED=1 go test -tags "sqlite_fts5" -race ./internal/llama/...` (`6.815s`) ve `GOOS=windows go vet ./internal/llama/...` PASS.
+
+---
+
 # Son oturum — 15 Kasım — Vulkan / GPU model yükleme hatasında otomatik CPU (`--device none`) geri dönüşü
 - Kök neden: `data/llama-8081.log` üzerinde doğrulandı; AMD Cezanne iGPU'da `libggml-vulkan.so` ile büyük model (`Qwen3.6-35B-A3B`) açılırken `radv/amdgpu: Not enough memory for command submission.` / `vk::Queue::submit: ErrorDeviceLost` ile çıkıyordu (`start-web.sh` `-dev none -ngl 0` kullandığı için çalışıyordu).
 - `internal/llama/llama.go`: `Server` başlatma logunun başlangıç ofsetini (`logPath`, `logStartOffset`) tutuyor; `WaitReadyContext` çıkışta `StartupFailureTail()` son satırlarını logluyor; `IsGPUStartupFailure` GPU/Vulkan/VRAM hatalarını algılıyor; başlangıç logundaki `GPU layers` artık `actualGPU` yazıyor.

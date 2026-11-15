@@ -497,13 +497,17 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   /// Records that the backend just said something. Throttled to once a
   /// second so a fast token stream doesn't rebuild the screen per token
   /// just for this.
-  void _timingTouch() {
+  void _timingTouch({bool generatedToken = false}) {
     final t = ref.read(streamTimingProvider);
     if (t == null) return;
     final now = DateTime.now();
-    if (now.difference(t.lastActivity) < const Duration(seconds: 1)) return;
-    ref.read(streamTimingProvider.notifier).state =
-        StreamTiming(startedAt: t.startedAt, lastActivity: now);
+    final needFirstToken = generatedToken && t.firstTokenAt == null;
+    if (!needFirstToken && now.difference(t.lastActivity) < const Duration(seconds: 1)) return;
+    ref.read(streamTimingProvider.notifier).state = StreamTiming(
+      startedAt: t.startedAt,
+      lastActivity: now,
+      firstTokenAt: t.firstTokenAt ?? (generatedToken ? now : null),
+    );
   }
 
   void _timingEnd() => ref.read(streamTimingProvider.notifier).state = null;
@@ -902,6 +906,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
         final isAgentMode = ref.read(agentEnabledProvider);
         const streamTimeout = Duration(seconds: 300);
 
+        var lastStreamUiFlush = DateTime.fromMillisecondsSinceEpoch(0);
+        var contentDirty = false;
+        var thinkingDirty = false;
         await for (final chunk in stream.timeout(
           streamTimeout,
           onTimeout: (sink) => sink.addError(
@@ -912,7 +919,18 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
         )) {
           // Any chunk — the backend's periodic heartbeat included — proves
           // the turn is alive; a heartbeat carries nothing else.
-          _timingTouch();
+          final hasGenToken =
+              chunk.finishReason != 'heartbeat' &&
+              chunk.finishReason != 'status' &&
+              chunk.finishReason != 'usage' &&
+              chunk.finishReason != 'model_route' &&
+              chunk.finishReason != 'agent_event' &&
+              chunk.finishReason != 'browser_frame' &&
+              chunk.finishReason != 'memory_used' &&
+              chunk.finishReason != 'generated_image' &&
+              chunk.finishReason != 'activity' &&
+              (chunk.content.isNotEmpty || (chunk.thinking?.isNotEmpty ?? false));
+          _timingTouch(generatedToken: hasGenToken);
           if (chunk.stats != null) {
             finalStats = chunk.stats;
           }
@@ -1001,19 +1019,44 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
             if (ref.read(streamingStatusProvider).isNotEmpty) {
               ref.read(streamingStatusProvider.notifier).state = '';
             }
-            fullReply += chunk.content;
             if (chunk.content.isNotEmpty) {
+              fullReply += chunk.content;
+              contentDirty = true;
               // The final answer has arrived; it replaces the live text of
               // the last step, which was showing the same words.
-              ref.read(streamingNarrationProvider.notifier).state = '';
+              if (ref.read(streamingNarrationProvider).isNotEmpty) {
+                ref.read(streamingNarrationProvider.notifier).state = '';
+              }
             }
-            fullThinking += chunk.thinking ?? '';
+            if ((chunk.thinking ?? '').isNotEmpty) {
+              fullThinking += chunk.thinking!;
+              thinkingDirty = true;
+            }
 
-            // Update streaming providers instead of copying the entire message list
-            if (streamingEnabled) {
-              ref.read(streamingContentProvider.notifier).state = fullReply;
-              ref.read(streamingThinkingProvider.notifier).state = fullThinking;
+            // Coalesce streaming provider updates (~20fps) so fast token bursts
+            // don't re-parse Markdown and re-layout the chat list on every token.
+            if (streamingEnabled && (contentDirty || thinkingDirty)) {
+              final now = DateTime.now();
+              if (now.difference(lastStreamUiFlush).inMilliseconds >= 50) {
+                lastStreamUiFlush = now;
+                if (contentDirty) {
+                  ref.read(streamingContentProvider.notifier).state = fullReply;
+                  contentDirty = false;
+                }
+                if (thinkingDirty) {
+                  ref.read(streamingThinkingProvider.notifier).state = fullThinking;
+                  thinkingDirty = false;
+                }
+              }
             }
+          }
+        }
+        if (_generation == myGeneration && streamingEnabled && !_stopped) {
+          if (contentDirty) {
+            ref.read(streamingContentProvider.notifier).state = fullReply;
+          }
+          if (thinkingDirty) {
+            ref.read(streamingThinkingProvider.notifier).state = fullThinking;
           }
         }
 

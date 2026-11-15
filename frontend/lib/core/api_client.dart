@@ -1358,6 +1358,7 @@ class MemoApiClient {
     double? temperature,
     double? topP,
     int? maxTokens,
+    String? effortLevel,
   }) async {
     final data = <String, dynamic>{};
     if (engineMode != null) data['engine_mode'] = engineMode;
@@ -1367,6 +1368,7 @@ class MemoApiClient {
     if (temperature != null) data['temperature'] = temperature;
     if (topP != null) data['top_p'] = topP;
     if (maxTokens != null) data['max_tokens'] = maxTokens;
+    if (effortLevel != null) data['effort_level'] = effortLevel;
 
     await _dio.put('/api/models/config', data: data);
   }

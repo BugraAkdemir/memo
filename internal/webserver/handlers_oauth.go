@@ -198,6 +198,10 @@ func (s *Server) handleProviderEffortLevels(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	if ptype == provider.ProviderType("local") {
+		writeJSON(w, map[string]interface{}{"levels": provider.EffortLevelsForCustom(provider.ProviderCustom)})
+		return
+	}
 	if ptype == provider.ProviderCustom || ptype == provider.ProviderCustomAnthropic {
 		writeJSON(w, map[string]interface{}{"levels": provider.EffortLevelsForCustom(ptype)})
 		return

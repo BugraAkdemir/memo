@@ -72,8 +72,9 @@ type ChatCompletionRequest struct {
 	Messages    []Message `json:"messages"`
 	Temperature float64   `json:"temperature,omitempty"`
 	TopP        float64   `json:"top_p,omitempty"`
-	MaxTokens   int       `json:"max_tokens,omitempty"`
-	Stream      bool      `json:"stream"`
+	MaxTokens       int       `json:"max_tokens,omitempty"`
+	Stream          bool      `json:"stream"`
+	ReasoningEffort string    `json:"reasoning_effort,omitempty"`
 	// Explicitly disable tool/function calling so models with built-in tool
 	// templates don't output JSON tool-call responses instead of plain text.
 	ToolChoice string `json:"tool_choice,omitempty"`

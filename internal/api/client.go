@@ -71,15 +71,32 @@ func (c *Client) setAuth(req *http.Request) {
 	}
 }
 
+type reasoningEffortCtxKey struct{}
+
+// WithReasoningEffort attaches a reasoning_effort value (e.g. "none", "low",
+// "medium", "high") to ctx for Client.ChatCompletion / ChatCompletionStream.
+func WithReasoningEffort(ctx context.Context, level string) context.Context {
+	if level == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, reasoningEffortCtxKey{}, level)
+}
+
+func reasoningEffortFromCtx(ctx context.Context) string {
+	v, _ := ctx.Value(reasoningEffortCtxKey{}).(string)
+	return v
+}
+
 func (c *Client) ChatCompletion(ctx context.Context, messages []Message, temperature float64, topP float64, maxTokens int) (*ChatCompletionResponse, error) {
 	req := ChatCompletionRequest{
-		Model:       c.model,
-		Messages:    messages,
-		Temperature: temperature,
-		TopP:        topP,
-		MaxTokens:   maxTokens,
-		Stream:      false,
-		ToolChoice:  "none",
+		Model:           c.model,
+		Messages:        messages,
+		Temperature:     temperature,
+		TopP:            topP,
+		MaxTokens:       maxTokens,
+		Stream:          false,
+		ReasoningEffort: reasoningEffortFromCtx(ctx),
+		ToolChoice:      "none",
 	}
 
 	body, err := json.Marshal(req)
@@ -115,13 +132,14 @@ func (c *Client) ChatCompletion(ctx context.Context, messages []Message, tempera
 
 func (c *Client) ChatCompletionStream(ctx context.Context, messages []Message, temperature float64, topP float64, maxTokens int) (<-chan StreamChunk, error) {
 	req := ChatCompletionRequest{
-		Model:       c.model,
-		Messages:    messages,
-		Temperature: temperature,
-		TopP:        topP,
-		MaxTokens:   maxTokens,
-		Stream:      true,
-		ToolChoice:  "none",
+		Model:           c.model,
+		Messages:        messages,
+		Temperature:     temperature,
+		TopP:            topP,
+		MaxTokens:       maxTokens,
+		Stream:          true,
+		ReasoningEffort: reasoningEffortFromCtx(ctx),
+		ToolChoice:      "none",
 	}
 
 	body, err := json.Marshal(req)

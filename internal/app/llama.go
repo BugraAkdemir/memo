@@ -164,6 +164,9 @@ func (a *App) UpdateLlamaConfig(cfg config.LlamaConfigUpdate) error {
 	if cfg.MaxTokens != nil {
 		a.cfg.Llama.MaxTokens = *cfg.MaxTokens
 	}
+	if cfg.EffortLevel != nil {
+		a.cfg.Llama.EffortLevel = *cfg.EffortLevel
+	}
 	a.cfgMu.Unlock()
 	return config.Save(a.cfg)
 }

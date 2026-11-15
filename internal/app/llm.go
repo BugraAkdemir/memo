@@ -1491,6 +1491,9 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 						firstGenAt = time.Now()
 					}
 					fullThinking.WriteString(chunk.Thinking)
+					if chunk.Content == "" {
+						tokenCount++
+					}
 					trySend(providerCtx, outCh, api.StreamChunk{Thinking: chunk.Thinking})
 				}
 
@@ -1581,9 +1584,9 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 		requestStart := time.Now()
 		a.cfgMu.RLock()
-		temperature, topP, maxTokens := a.cfg.Llama.Temperature, a.cfg.Llama.TopP, a.cfg.Llama.MaxTokens
+		temperature, topP, maxTokens, effortLevel := a.cfg.Llama.Temperature, a.cfg.Llama.TopP, a.cfg.Llama.MaxTokens, a.cfg.Llama.EffortLevel
 		a.cfgMu.RUnlock()
-		ch, err := streamClient.ChatCompletionStream(streamCtx, messages, temperature, topP, maxTokens)
+		ch, err := streamClient.ChatCompletionStream(api.WithReasoningEffort(streamCtx, effortLevel), messages, temperature, topP, maxTokens)
 		if err != nil {
 			logx.Printf("LATENCY llm.stream_error total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
 			logx.Printf("LLM stream error: %v", err)
@@ -1648,6 +1651,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				}
 				fullThinking.WriteString(chunk.Thinking)
 				if chunk.Content == "" {
+					tokenCount++
 					trySend(streamCtx, outCh, chunk)
 				}
 			}

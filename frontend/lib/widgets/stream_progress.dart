@@ -123,8 +123,10 @@ class _StreamProgressLineState extends State<StreamProgressLine> {
     final silence = now.difference(widget.timing.lastActivity);
     final stale = silence >= kStreamSilenceWarning;
     final elapsedClamped = elapsed.isNegative ? Duration.zero : elapsed;
-    final liveTps = (widget.generatedChars > 0 && elapsedClamped.inMilliseconds >= 500)
-        ? (widget.generatedChars / 4.0) / (elapsedClamped.inMilliseconds / 1000.0)
+    final evalStart = widget.timing.firstTokenAt ?? widget.timing.startedAt;
+    final evalElapsed = now.difference(evalStart);
+    final liveTps = (widget.generatedChars > 0 && evalElapsed.inMilliseconds >= 500)
+        ? (widget.generatedChars / 4.0) / (evalElapsed.inMilliseconds / 1000.0)
         : 0.0;
     final tpsSuffix = liveTps > 0
         ? ' · ${L10n.t('msg_stats_tps', {'tps': liveTps.toStringAsFixed(2)})}'

@@ -787,6 +787,7 @@ type LlamaConfig struct {
 	Temperature      float64 `yaml:"temperature" json:"temperature"`               // default 0.7
 	TopP             float64 `yaml:"top_p" json:"top_p"`                           // default 0.9
 	MaxTokens        int     `yaml:"max_tokens" json:"max_tokens"`                 // default 0 (no limit)
+	EffortLevel      string  `yaml:"effort_level" json:"effort_level"`             // "", "none", "low", "medium", "high"
 
 	// EmbeddingGPULayers controls how many layers the dedicated embedding
 	// llama-server (a.llamaEmbedServer, a separate process from the chat
@@ -875,6 +876,7 @@ type LlamaConfigUpdate struct {
 	Temperature   *float64 `json:"temperature"`
 	TopP          *float64 `json:"top_p"`
 	MaxTokens     *int     `json:"max_tokens"`
+	EffortLevel   *string  `json:"effort_level"`
 }
 
 type IdentityConfig struct {

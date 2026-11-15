@@ -59,8 +59,15 @@
 
 ---
 
-# Son oturum — 15 Kasım — `auto` motor seçiminde Windows/macOS/Linux GPU önceliği + Windows DCH `nvidia-smi`
-- Kök neden: `listGPUDevices` Windows/macOS üzerinde `ok=false` döndüğü için `resolveBinary(..., "auto")` `flavors = ["amd", "nvidia", "cpu"]` sırasından ilk mevcut klasörü (`amd`) alıp `nvidia`/`metal`/`cpu` seçimini hiç gözetmiyordu; ayrıca `detectNVIDIA` Windows'ta modern DCH sürücülerinin kurduğu `%SystemRoot%\System32\nvidia-smi.exe` yolunu kontrol etmiyordu.
-- `internal/llama/llama.go`: `autoFlavorOrder(goos, gpuType)` + `detectGPUForFlavor` eklendi — Windows/macOS'ta `DetectGPU().Type` sonucuna göre `nvidia`/`amd`/`metal`/`cpu` sırasıyla seçim yapılıyor; Linux'ta `gpuSelector` `"cpu"`'yu sonda tutarak `--list-devices` yoklamasını koruyor (NVIDIA'da `"nvidia"` önce deneniyor).
-- `internal/llama/gpu.go`: `detectNVIDIA` Windows yollarına `%SystemRoot%\System32\nvidia-smi.exe` eklendi; `llama_test.go`'ya `TestAutoFlavorOrder` eklendi.
-- Doğrulama: `CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...`, `CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...`, `CGO_ENABLED=1 go test -tags "sqlite_fts5" -race ./internal/llama/...` (`6.815s`) ve `GOOS=windows go vet ./internal/llama/...` PASS.
+# Son oturum — 15 Kasım — Yerel modelde Effort seçimi, düşünme/canlı `t/s` düzeltmesi ve akış akıcılığı
+- **Yerel modelde Effort seçimi**:
+  - `internal/config/config.go` (`LlamaConfig.EffortLevel`, `LlamaConfigUpdate.EffortLevel`), `internal/app/llama.go` (`UpdateLlamaConfig`), `internal/api/types.go` (`ChatCompletionRequest.ReasoningEffort`), `internal/api/client.go` (`WithReasoningEffort`), `internal/app/llm.go` (`callLLMStream` yerel `llama.cpp` dalı) ve `internal/webserver/handlers_oauth.go` (`ptype == "local"` için standart effort seviyeleri; `ProviderCustom`/`ProviderCustomAnthropic` kendi `ptype`'ını korur).
+  - Flutter: `frontend/lib/core/api_client.dart` (`updateLlamaConfig(..., effortLevel:)`), `frontend/lib/providers/settings_provider.dart` (`LlamaSettings.effortLevel`), `frontend/lib/screens/chat_screen.dart` (`QuickEffortSelector` yerel modda da görünür, `llamaSettingsProvider` üzerinden okur/yazar).
+- **Yerel model + düşünme sırasında `t/s` düzeltmesi**:
+  - `internal/app/llm.go`: hem haricî hem yerel `llama.cpp` akışında `chunk.Thinking != "" && chunk.Content == ""` iken de `tokenCount++` artırılıyor (artık düşünme süresi token sayacına yansıyor).
+  - `frontend/lib/models/stream_timing.dart` + `frontend/lib/providers/chat_provider.dart` + `frontend/lib/widgets/stream_progress.dart`: `StreamTiming.firstTokenAt` eklendi; canlı `liveTps` hesabı `firstTokenAt ?? startedAt` üzerinden prompt eval/TTFT gecikmesini dışlıyor (`stream_progress_test.dart`'a yeni test eklendi).
+- **Akış akıcılığı ("dona dona gelme")**:
+  - `frontend/lib/providers/chat_provider.dart`: SSE döngüsünde `streamingContentProvider` / `streamingThinkingProvider` güncellemeleri ~50 ms aralıklara birleştirildi (döngü sonunda son flush ile).
+- **Doğrulama**:
+  - `CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...`, `CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...` PASS; `go test -tags "sqlite_fts5" -race ./internal/api/... ./internal/webserver/... ./internal/app/... -run "TestFinishStream|TestHandleProviderEffortLevels|TestUpdateLlamaConfig"` PASS; tam `go test -tags "sqlite_fts5" ./... -race` koşusunda yalnız önceden bilinen `TestIntegration_LongHistoryGetsCompacted`, `TestChat_StreamCutMidAnswerKeepsWhatTheUserSaw`, `TestChat_EmptyReplyIsExplainedNotSavedBlank`, `internal/updater` (`node_modules`) ve ilgisiz `TestChatSubAgents_InheritSelectedProviderInsteadOfFirstEnabled` düştü, geri kalan tüm paketler (dahil `internal/webserver`, `internal/api`, `internal/config`) PASS.
+  - `flutter analyze lib/` (0 hata, yalnız önceden var olan 3 `use_build_context_synchronously` info), `flutter test` (`1040` PASS, 1 pre-existing skip) ve L10n literal kontrolü (0 yeni ihlal) PASS.

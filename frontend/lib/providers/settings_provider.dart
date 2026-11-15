@@ -81,6 +81,7 @@ class LlamaSettings {
   final double temperature;
   final double topP;
   final int maxTokens;
+  final String effortLevel;
 
   const LlamaSettings({
     required this.engineMode,
@@ -90,6 +91,7 @@ class LlamaSettings {
     this.temperature = 0.7,
     this.topP = 0.9,
     this.maxTokens = 0,
+    this.effortLevel = '',
   });
 
   factory LlamaSettings.fromJson(Map<String, dynamic> json) {
@@ -101,6 +103,7 @@ class LlamaSettings {
       temperature: (json['temperature'] as num?)?.toDouble() ?? 0.7,
       topP: (json['top_p'] as num?)?.toDouble() ?? 0.9,
       maxTokens: json['max_tokens'] as int? ?? 0,
+      effortLevel: json['effort_level'] ?? '',
     );
   }
 }
@@ -136,6 +139,7 @@ class LlamaSettingsNotifier extends AsyncNotifier<LlamaSettings> {
           temperature: settings.temperature,
           topP: settings.topP,
           maxTokens: settings.maxTokens,
+          effortLevel: settings.effortLevel,
         );
     state = AsyncData(settings);
   }

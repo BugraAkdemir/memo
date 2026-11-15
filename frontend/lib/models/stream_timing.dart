@@ -6,7 +6,12 @@
 /// between tool calls, and a turn that was still working looked exactly like
 /// one that had hung.
 class StreamTiming {
-  const StreamTiming({required this.startedAt, required this.lastActivity});
+  const StreamTiming({
+    required this.startedAt,
+    required this.lastActivity,
+    this.firstTokenAt,
+  });
   final DateTime startedAt;
   final DateTime lastActivity;
+  final DateTime? firstTokenAt;
 }

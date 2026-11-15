@@ -896,3 +896,50 @@ func TestRecordStoppedTurn_KeepsToolEventsWithoutText(t *testing.T) {
 		t.Fatalf("bare stop changed: %+v", got)
 	}
 }
+
+func TestFinishStream_TokensPerSecondExcludesPromptEval(t *testing.T) {
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("sessions.NewManager: %v", err)
+	}
+	a := &App{
+		cfg:      &config.AppConfig{},
+		identity: identity.New("Test", "Memo", "casual", "", false),
+		sessions: sm,
+		events:   &eventRing{},
+	}
+
+	t.Run("uses evalStart when set and more than 1 token", func(t *testing.T) {
+		chatID := sm.NewChat()
+		start := time.Now().Add(-2 * time.Second)
+		evalStart := time.Now().Add(-500 * time.Millisecond)
+		ctx := withEvalStart(context.Background(), evalStart)
+		st := a.finishStream(ctx, start, 11, "stop", "hello world", "hi", chatID, &usageMeta{})
+		if st.TokensPerSecond < 15.0 || st.TokensPerSecond > 25.0 {
+			t.Fatalf("TokensPerSecond = %.2f, want ~20.0 (excluding 1.5s prompt eval)", st.TokensPerSecond)
+		}
+		if st.TotalDuration < 1.9 {
+			t.Fatalf("TotalDuration = %.2f, want >= 1.9", st.TotalDuration)
+		}
+	})
+
+	t.Run("falls back to total duration without evalStart", func(t *testing.T) {
+		chatID := sm.NewChat()
+		start := time.Now().Add(-1 * time.Second)
+		st := a.finishStream(context.Background(), start, 10, "stop", "hello world", "hi", chatID, &usageMeta{})
+		if st.TokensPerSecond < 7.0 || st.TokensPerSecond > 13.0 {
+			t.Fatalf("TokensPerSecond = %.2f, want ~10.0", st.TokensPerSecond)
+		}
+	})
+
+	t.Run("single token falls back to total duration", func(t *testing.T) {
+		chatID := sm.NewChat()
+		start := time.Now().Add(-1 * time.Second)
+		evalStart := time.Now().Add(-200 * time.Millisecond)
+		ctx := withEvalStart(context.Background(), evalStart)
+		st := a.finishStream(ctx, start, 1, "stop", "ok", "hi", chatID, &usageMeta{})
+		if st.TokensPerSecond < 0.7 || st.TokensPerSecond > 1.5 {
+			t.Fatalf("TokensPerSecond = %.2f, want ~1.0", st.TokensPerSecond)
+		}
+	})
+}

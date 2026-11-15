@@ -776,6 +776,7 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 	// estimate of the seed messages) and pass the real completion count on to
 	// finishStream instead of the historical literal 0.
 	completionTokens := 0
+	var firstGenAt time.Time
 	applyUsage := func(u *provider.Usage) {
 		if u == nil {
 			return
@@ -815,6 +816,9 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 		}
 		applyUsage(chunk.Usage)
 		if chunk.Thinking != "" {
+			if firstGenAt.IsZero() {
+				firstGenAt = time.Now()
+			}
 			fullThinking.WriteString(chunk.Thinking)
 			trySend(ctx, outCh, api.StreamChunk{Thinking: chunk.Thinking})
 		}
@@ -826,18 +830,21 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 		}
 
 		if chunk.Content != "" {
+			if firstGenAt.IsZero() {
+				firstGenAt = time.Now()
+			}
 			fullReply.WriteString(chunk.Content)
 			trySend(ctx, outCh, api.StreamChunk{Content: chunk.Content})
 		}
 
 		if chunk.Done {
-			st := a.finishStream(withThinking(ctx, fullThinking.String()), start, completionTokens, chunk.FinishReason, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
+			st := a.finishStream(withEvalStart(withThinking(ctx, fullThinking.String()), firstGenAt), start, completionTokens, chunk.FinishReason, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
 			return chunk.FinishReason, true, st
 		}
 	}
 
 	if fullReply.Len() > 0 {
-		st := a.finishStream(withThinking(ctx, fullThinking.String()), start, completionTokens, "stop", fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
+		st := a.finishStream(withEvalStart(withThinking(ctx, fullThinking.String()), firstGenAt), start, completionTokens, "stop", fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
 		return "stop", true, st
 	}
 	a.recordStreamError(userMsg, a.t("⚠️ Agent boş yanıt döndürdü", "⚠️ Agent returned an empty response"), sessionID)
@@ -1431,6 +1438,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			}
 			var fullReply strings.Builder
 			var fullThinking strings.Builder
+			var firstGenAt time.Time
 			tokenCount := 0
 			firstTokenLogged := false
 
@@ -1479,11 +1487,17 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				// read here, so a selected effort level spent real thinking
 				// tokens the user could never see.
 				if chunk.Thinking != "" {
+					if firstGenAt.IsZero() {
+						firstGenAt = time.Now()
+					}
 					fullThinking.WriteString(chunk.Thinking)
 					trySend(providerCtx, outCh, api.StreamChunk{Thinking: chunk.Thinking})
 				}
 
 				if chunk.Content != "" {
+					if firstGenAt.IsZero() {
+						firstGenAt = time.Now()
+					}
 					if !firstTokenLogged {
 						firstTokenLogged = true
 						usageMetaVal.TTFTMs = int(time.Since(start).Milliseconds())
@@ -1504,7 +1518,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 						trySend(providerCtx, outCh, api.StreamChunk{Error: a.emptyReplyMsg(), Done: true})
 						return
 					}
-					st := a.finishStream(withThinking(ctx, fullThinking.String()), start, completionCount(providerCompletionTokens, tokenCount), chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
+					st := a.finishStream(withEvalStart(withThinking(ctx, fullThinking.String()), firstGenAt), start, completionCount(providerCompletionTokens, tokenCount), chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
 					trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason, Stats: st})
 					return
 				}
@@ -1519,7 +1533,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				return
 			}
 			if fullReply.Len() > 0 {
-				st := a.finishStream(withThinking(ctx, fullThinking.String()), start, completionCount(providerCompletionTokens, tokenCount), "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
+				st := a.finishStream(withEvalStart(withThinking(ctx, fullThinking.String()), firstGenAt), start, completionCount(providerCompletionTokens, tokenCount), "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
 				trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop", Stats: st})
 			} else {
 				errMsg := "⚠️ Provider returned empty response"
@@ -1589,6 +1603,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		var fullThinking strings.Builder
 		tokenCount := 0
 		firstTokenLogged := false
+		var firstGenAt time.Time
 
 		for {
 			chunk, ok, ctxDone := recvChunk(streamCtx, ch)
@@ -1628,6 +1643,9 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			// send it here instead, once, so the Content branch below
 			// doesn't end up double-sending a chunk that carries both.
 			if chunk.Thinking != "" {
+				if firstGenAt.IsZero() {
+					firstGenAt = time.Now()
+				}
 				fullThinking.WriteString(chunk.Thinking)
 				if chunk.Content == "" {
 					trySend(streamCtx, outCh, chunk)
@@ -1635,6 +1653,9 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			}
 
 			if chunk.Content != "" {
+				if firstGenAt.IsZero() {
+					firstGenAt = time.Now()
+				}
 				if !firstTokenLogged {
 					firstTokenLogged = true
 					usageMetaVal.TTFTMs = int(time.Since(requestStart).Milliseconds())
@@ -1652,7 +1673,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 					trySend(streamCtx, outCh, api.StreamChunk{Error: a.emptyReplyMsg(), Done: true})
 					return
 				}
-				st := a.finishStream(withThinking(ctx, fullThinking.String()), start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
+				st := a.finishStream(withEvalStart(withThinking(ctx, fullThinking.String()), firstGenAt), start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
 				chunk.Stats = st
 				trySend(streamCtx, outCh, chunk)
 				return
@@ -1666,7 +1687,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		}
 		if fullReply.Len() > 0 {
 			logx.Printf("LATENCY llm.stream_closed total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
-			st := a.finishStream(withThinking(ctx, fullThinking.String()), start, tokenCount, "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
+			st := a.finishStream(withEvalStart(withThinking(ctx, fullThinking.String()), firstGenAt), start, tokenCount, "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
 			trySend(streamCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop", Stats: st})
 		} else {
 			logx.Printf("LATENCY llm.stream_empty total_ms=%d generation_ms=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds())
@@ -1950,6 +1971,23 @@ func withThinking(ctx context.Context, thinking string) context.Context {
 	return context.WithValue(ctx, thinkingCtxKey{}, thinking)
 }
 
+type evalStartCtxKey struct{}
+
+// withEvalStart records the timestamp of the first generated token so
+// finishStream can compute decode speed (t/s) excluding prompt-eval / TTFT,
+// matching llama.cpp's eval time = (n_eval - 1) / (end - first_token).
+func withEvalStart(ctx context.Context, t time.Time) context.Context {
+	if t.IsZero() {
+		return ctx
+	}
+	return context.WithValue(ctx, evalStartCtxKey{}, t)
+}
+
+func evalStartFromCtx(ctx context.Context) time.Time {
+	t, _ := ctx.Value(evalStartCtxKey{}).(time.Time)
+	return t
+}
+
 func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int, finishReason, reply, userMsg, sessionID string, meta *usageMeta, agentEvents ...[]interface{}) *api.MessageStats {
 	if r := subscriptionTextRouteFromCtx(ctx); r != nil && r.auto && meta != nil {
 		meta.Provider, meta.Model = routeProvider(r), routeModel(r)
@@ -1969,7 +2007,10 @@ func (a *App) finishStream(ctx context.Context, start time.Time, tokenCount int,
 		completionTokens = estimateContentTokens(reply)
 	}
 	tps := 0.0
-	if duration > 0 && completionTokens > 0 {
+	evalStart := evalStartFromCtx(ctx)
+	if evalDur := time.Since(evalStart).Seconds(); !evalStart.IsZero() && completionTokens > 1 && evalDur > 0.01 {
+		tps = float64(completionTokens-1) / evalDur
+	} else if duration > 0 && completionTokens > 0 {
 		tps = float64(completionTokens) / duration
 	}
 	// The skills this turn called go on the saved message too.

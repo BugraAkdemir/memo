@@ -28,6 +28,16 @@ func copyTree(t *testing.T, src, dst string) {
 		if err != nil {
 			return err
 		}
+		switch info.Name() {
+		case "node_modules", "rust-ai-slides", "performance", "build_output", ".git":
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return nil
+		}
 		rel, _ := filepath.Rel(src, p)
 		target := filepath.Join(dst, rel)
 		if info.IsDir() {
@@ -70,7 +80,7 @@ func newPublishEnv(t *testing.T) *publishEnv {
 		b, _ := os.ReadFile(filepath.Join(root, f))
 		_ = os.WriteFile(filepath.Join(repo, f), b, 0o644)
 	}
-	for _, d := range []string{"cmd/memo-sign", "internal/updater", "internal/components", "scripts"} {
+	for _, d := range []string{"cmd/memo-sign", "internal/updater", "internal/components", "internal/procjob", "scripts"} {
 		copyTree(t, filepath.Join(root, d), filepath.Join(repo, d))
 	}
 	_ = os.WriteFile(filepath.Join(repo, "version"), []byte("V4.7.0"), 0o644)

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 module memo
 
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/BugraAkdemir/gosearch v0.2.0

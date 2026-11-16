@@ -2,6 +2,8 @@ package skill
 
 import (
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 type DangerLevel string
@@ -25,6 +27,27 @@ type SkillTool struct {
 	// Command is registered for documentation purposes only (it appears in
 	// the skill's manifest) but is never wired up as a callable agent tool.
 	Command string `yaml:"command" json:"command,omitempty"`
+}
+
+// UnmarshalYAML accepts both a full SkillTool mapping (`name: ...`, `command: ...`)
+// and a plain scalar string (`- browser` or `tools: [browser, bash]`, as used in
+// Claude Code / Agent Skills frontmatter for documentation-only tool allowlists).
+func (t *SkillTool) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		var name string
+		if err := value.Decode(&name); err != nil {
+			return err
+		}
+		*t = SkillTool{Name: name}
+		return nil
+	}
+	type rawSkillTool SkillTool
+	var raw rawSkillTool
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+	*t = SkillTool(raw)
+	return nil
 }
 
 type SkillManifest struct {

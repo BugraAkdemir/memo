@@ -70,7 +70,7 @@ Acceptable pre-existing noise: a few `use_build_context_synchronously` **info**-
 
 | Directory | Responsibility | Key Files |
 |-----------|---------------|-----------|
-| `internal/app/` | Central orchestrator (25 files) | `app.go`, `llm.go`, `chat.go`, `learning.go`, `whatsapp.go` |
+| `internal/app/` | Central orchestrator (129 files) | `app.go`, `llm.go`, `chat.go`, `learning.go`, `whatsapp.go` |
 | `internal/replcli/` | Terminal REPL client — talks to the REST API the same way Flutter does | `client.go`, `repl.go`, `sse.go`, `agent_event.go`, `clients_client.go`, `commands.go`, `editor.go`, `keys.go`, `models_client.go`, `remote_client.go`, `sessions_client.go`, `tasklist_client.go`, `color.go` (welcome panel), `l10n.go` (CLI's own TR/EN string table, separate from Flutter's `l10n.dart` — synced to the same language via backend `Identity.UILanguage`), `filematch.go` (`@` file-mention) |
 | `internal/webserver/` | REST API (~50 endpoints; task loop: `/api/tasklists/*` CRUD + `/api/tasks/running` + `/api/tasks/{id}/{pause,resume,cancel,skip,inject}` in `handlers_tasks.go`) | `server.go`, `handlers_flutter.go`, `handlers_tasks.go`, `bridge.go` |
 | `internal/llama/` | llama.cpp subprocess lifecycle | `llama.go`, `installer.go`, `gpu.go`, `device_probe.go` (which engine folder / GPU, `--device none`), `spec.go` (n-gram speculative decoding), `flag_probe.go` |

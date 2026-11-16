@@ -866,7 +866,7 @@ func copyFile(src, dst string) error {
 // single-tool executor), orchestra, browser-backed web chats (text only),
 // project chats, Minimal and Code Mode.
 func (a *App) calendarViaTool(ctx context.Context, chatID string) bool {
-	if a.calendarStore == nil || a.agentExecutor == nil || codeModeActive(ctx) || a.isProjectChat(chatID) {
+	if a.calendarStore == nil || !a.calendarStore.HasEvents(ctx) || a.agentExecutor == nil || codeModeActive(ctx) || a.isProjectChat(chatID) {
 		return false
 	}
 	if a.identity.GetMinimalMode() || a.GetWebSearchEnabled() {

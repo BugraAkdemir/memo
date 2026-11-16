@@ -827,7 +827,11 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 		}
 		if chunk.Error != "" {
 			a.noteProviderFailure(usageMetaVal.Provider, usageMetaVal.Model, chunk.Error)
-			a.recordFailedTurn(userMsg, fullReply.String(), "⚠️ "+chunk.Error, sessionID)
+			partial := fullReply.String()
+			if strings.TrimSpace(partial) == "" {
+				partial, _ = agentEvents.stopState()
+			}
+			a.recordFailedTurn(userMsg, partial, "⚠️ "+chunk.Error, sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
 			return "", false, nil
 		}

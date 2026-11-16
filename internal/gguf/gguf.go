@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -270,4 +271,29 @@ func readValue(r *bufio.Reader) (any, error) {
 	// FLOAT32/FLOAT64: bit pattern is read and discarded correctly above,
 	// nothing in this package ever needs a float metadata value.
 	return nil, nil
+}
+
+// FindMmproj looks for a multimodal projector GGUF file next to modelPath
+// (preferring modelPath+".mmproj" before falling back to filepath.Dir(modelPath)).
+func FindMmproj(modelPath string) string {
+	dir := modelPath + ".mmproj"
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		dir = filepath.Dir(modelPath) // legacy manually installed projectors
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		lower := strings.ToLower(e.Name())
+		if strings.Contains(lower, "mmproj") || strings.Contains(lower, "multimodal") {
+			if strings.HasSuffix(lower, ".gguf") {
+				return filepath.Join(dir, e.Name())
+			}
+		}
+	}
+	return ""
 }

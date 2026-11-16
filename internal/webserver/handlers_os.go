@@ -22,8 +22,6 @@ type oobeCompletionState struct {
 	config      *OSOOBECompleteRequest
 }
 
-var korteksOOBEState oobeCompletionState
-
 // OSOOBECompleteRequest captures choices made during the KorteksOS First-Boot OOBE wizard.
 type OSOOBECompleteRequest struct {
 	RingMode        string   `json:"ring_mode"`
@@ -83,9 +81,9 @@ func (s *Server) handleOSStatus(w http.ResponseWriter, r *http.Request) {
 
 	latestReport, hasReport := proactive.DefaultDoctorBridge().Latest()
 
-	korteksOOBEState.mu.RLock()
-	oobeDone := korteksOOBEState.completed
-	korteksOOBEState.mu.RUnlock()
+	s.oobeState.mu.RLock()
+	oobeDone := s.oobeState.completed
+	s.oobeState.mu.RUnlock()
 
 	if !oobeDone {
 		if marker := os.Getenv("KORTEKS_OOBE_MARKER"); marker != "" {
@@ -166,11 +164,11 @@ func (s *Server) handleOSOOBEComplete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfgCopy := req
-	korteksOOBEState.mu.Lock()
-	korteksOOBEState.completed = true
-	korteksOOBEState.completedAt = time.Now().UTC()
-	korteksOOBEState.config = &cfgCopy
-	korteksOOBEState.mu.Unlock()
+	s.oobeState.mu.Lock()
+	s.oobeState.completed = true
+	s.oobeState.completedAt = time.Now().UTC()
+	s.oobeState.config = &cfgCopy
+	s.oobeState.mu.Unlock()
 
 	writeJSON(w, map[string]any{
 		"ok":                 true,

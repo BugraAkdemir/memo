@@ -28,6 +28,7 @@ func (h *Harness) storedMessages(chatID string) []struct {
 // the part they had already read was gone.
 func TestChat_StreamCutMidAnswerKeepsWhatTheUserSaw(t *testing.T) {
 	h := NewHarness(t)
+	h.SetAgentEnabled(false)
 	h.SetWebSearchEnabled(false) // plain chat → the provider's SSE path
 	h.Fake.Script = func(callNum int, req FakeChatRequest) FakeChatResponse {
 		if !req.Stream {
@@ -60,6 +61,7 @@ func TestChat_StreamCutMidAnswerKeepsWhatTheUserSaw(t *testing.T) {
 // no hint of what happened.
 func TestChat_EmptyReplyIsExplainedNotSavedBlank(t *testing.T) {
 	h := NewHarness(t)
+	h.SetAgentEnabled(false)
 	h.SetWebSearchEnabled(false)
 	h.Fake.Script = func(callNum int, req FakeChatRequest) FakeChatResponse {
 		if !req.Stream {

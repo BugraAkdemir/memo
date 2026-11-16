@@ -431,9 +431,8 @@ type App struct {
 	swarmJoinHost      string // decoded host address from that code
 	swarmJoinConnected bool   // true after a successful register POST
 
-	// Embedded binaries and version string passed in from main.
-	binaries embed.FS
-	version  string
+	// Version string passed in from main.
+	version string
 	// update is the in-app updater's state (update.go); its zero value is ready.
 	update updateRuntime
 
@@ -477,16 +476,13 @@ type App struct {
 	outbox   map[string]outboxEntry
 }
 
-// NewApp creates a new App instance. The binaries embed.FS and version string
-// must be provided by the caller (typically main), because go:embed directives
-// cannot reference paths outside the package directory.
-func NewApp(binaries embed.FS, version string) *App {
+// NewApp creates a new App instance.
+func NewApp(_ embed.FS, version string) *App {
 	wireGlobalActivityHook()
 	wireLiveModeActivityHook()
 	return &App{
-		events:   &eventRing{},
-		binaries: binaries,
-		version:  version,
+		events:  &eventRing{},
+		version: version,
 	}
 }
 
@@ -1098,7 +1094,7 @@ func (a *App) shutdownSync(ctx context.Context) {
 	a.memorySaveWg.Wait()
 
 	a.embeddingMu.Lock()
-	if a.llamaEmbedServer != nil {
+	if a.llamaEmbedServer != nil && a.llamaEmbedServer.IsRunning() {
 		_ = a.llamaEmbedServer.Stop()
 	}
 	a.embeddingMu.Unlock()
@@ -1138,11 +1134,8 @@ func (a *App) shutdownSync(ctx context.Context) {
 	if ws != nil {
 		stop("whisper", ws.Stop)
 	}
-	if a.llamaServer != nil {
+	if a.llamaServer != nil && a.llamaServer.IsRunning() {
 		stop("llama chat", a.llamaServer.Stop)
-	}
-	if a.llamaEmbedServer != nil {
-		stop("llama embedding", a.llamaEmbedServer.Stop)
 	}
 	if a.browserMgr != nil {
 		stop("browser engine", a.browserMgr.Stop)

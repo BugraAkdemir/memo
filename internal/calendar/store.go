@@ -272,6 +272,16 @@ func scanEvents(rows *sql.Rows) ([]Event, error) {
 	return events, rows.Err()
 }
 
+// HasEvents reports whether the calendar store contains at least one event.
+func (s *Store) HasEvents(ctx context.Context) bool {
+	if s == nil || s.db == nil {
+		return false
+	}
+	var exists int
+	err := s.db.QueryRowContext(ctx, `SELECT 1 FROM events LIMIT 1`).Scan(&exists)
+	return err == nil && exists == 1
+}
+
 // ListOverlapping includes events beginning before the requested window.
 // An event without an end conservatively occupies one hour.
 func (s *Store) ListOverlapping(ctx context.Context, from, to time.Time) ([]Event, error) {

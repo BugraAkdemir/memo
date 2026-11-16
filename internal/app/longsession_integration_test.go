@@ -515,17 +515,19 @@ func TestIntegration_LongHistoryGetsCompacted(t *testing.T) {
 	})
 	h := newLongSessionApp(t, fp, false)
 
-	// A window big enough that many turns survive the token-aware fetch, but
-	// small enough that their combined size crosses CompactThresholdPct (90% of
-	// the window, whole prompt). The tool schema rides on every agent request and
-	// is real context, so the window is the 3500 tokens of conversation PLUS it —
-	// a 3500-token window would leave the history nothing at all.
+	// A window big enough that many turns survive the token-aware fetch (and stay
+	// above compactWindowLimit = 10000 so the compact profile does not suppress
+	// history summarization), but small enough that their combined size crosses
+	// CompactThresholdPct (90% of the window, whole prompt). The tool schema rides
+	// on every agent request and is real context, so the window is the conversation
+	// share PLUS the active tool schema.
 	h.a.cfgMu.Lock()
+	h.a.cfg.AgentMode.OnDemandTools = false
 	h.a.cfg.AgentMode.CompactThresholdPct = 90
-	h.a.cfg.Llama.MaxContextTokens = 3500 + h.a.agentToolTokens("")
+	h.a.cfg.Llama.MaxContextTokens = 8000 + h.a.agentToolTokens("")
 	h.a.cfgMu.Unlock()
 
-	filler := strings.Repeat("word ", 60) // ~100 tok/message
+	filler := strings.Repeat("word ", 140) // ~235 tok/message
 	for i := 0; i < 30; i++ {
 		h.turn(t, fmt.Sprintf("%s question %d", filler, i))
 	}

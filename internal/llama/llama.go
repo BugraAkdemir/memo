@@ -960,26 +960,7 @@ func extractModelName(path string) string {
 
 // findMmproj looks for a multimodal projector GGUF file next to the model.
 func findMmproj(modelPath string) string {
-	dir := modelPath + ".mmproj"
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		dir = filepath.Dir(modelPath) // legacy manually installed projectors
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return ""
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		lower := strings.ToLower(e.Name())
-		if strings.Contains(lower, "mmproj") || strings.Contains(lower, "multimodal") {
-			if strings.HasSuffix(lower, ".gguf") {
-				return filepath.Join(dir, e.Name())
-			}
-		}
-	}
-	return ""
+	return gguf.FindMmproj(modelPath)
 }
 
 // StartupFailureTail returns the log output written by the most recent Start

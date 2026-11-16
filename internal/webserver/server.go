@@ -63,6 +63,7 @@ type Server struct {
 	listenAddr  string
 	localIPs    []string
 	stopCleaner chan struct{}
+	oobeState   oobeCompletionState
 }
 
 func New(bridge AppBridge) *Server {

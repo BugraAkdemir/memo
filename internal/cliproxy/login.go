@@ -291,6 +291,7 @@ func (m *Manager) StartLogin(ctx context.Context, provider string) (string, erro
 		cancel()
 		m.invalidateModels()
 		if werr == nil {
+			m.ClearVendorEnded(provider)
 			logx.Printf("cliproxy: %s login finished", provider)
 		}
 	}()

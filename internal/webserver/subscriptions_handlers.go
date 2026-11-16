@@ -75,6 +75,12 @@ func (s *Server) handleSubscriptions(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			writeJSON(w, s.fullBridge.SubscriptionsState(r.Context()))
+		case "recheck":
+			if err := s.fullBridge.RecheckSubscription(r.Context(), strings.ToLower(strings.TrimSpace(body.Provider))); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeJSON(w, s.fullBridge.SubscriptionsState(r.Context()))
 		default:
 			http.Error(w, "unknown action", http.StatusBadRequest)
 		}

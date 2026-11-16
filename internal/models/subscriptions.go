@@ -25,10 +25,11 @@ type SubscriptionsState struct {
 
 // SubscriptionAccount is one signed-in vendor account.
 type SubscriptionAccount struct {
-	Provider string `json:"provider"`
-	Email    string `json:"email"`
-	Project  string `json:"project,omitempty"`
-	Disabled bool   `json:"disabled,omitempty"`
+	Provider         string `json:"provider"`
+	Email            string `json:"email"`
+	Project          string `json:"project,omitempty"`
+	Disabled         bool   `json:"disabled,omitempty"`
+	EntitlementEnded bool   `json:"entitlement_ended,omitempty"`
 }
 
 // SubscriptionModel is one model the signed-in accounts can use. OwnedBy is the

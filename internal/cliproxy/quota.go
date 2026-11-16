@@ -136,6 +136,9 @@ func (m *Manager) fetchQuotas(ctx context.Context) (map[string]Quota, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusPaymentRequired {
+			m.MarkVendorEnded(ProviderAntigravity, EndedSourceQuota, fmt.Sprintf("status %d", resp.StatusCode))
+		}
 		return nil, fmt.Errorf("%w: status %d", ErrQuotaUnavailable, resp.StatusCode)
 	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
@@ -145,6 +148,9 @@ func (m *Manager) fetchQuotas(ctx context.Context) (map[string]Quota, error) {
 	out, ok := parseQuotas(data)
 	if !ok {
 		return nil, fmt.Errorf("%w: unexpected response", ErrQuotaUnavailable)
+	}
+	if len(out) > 0 {
+		m.ClearQuotaEnded(ProviderAntigravity)
 	}
 	return out, nil
 }

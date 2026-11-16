@@ -154,7 +154,12 @@ func (a *App) classifyProviderError(text string) (msg string, known bool) {
 	// A 403 first: the OpenAI-compatible provider words both 401 and 403 as an
 	// "authentication error", so the wording alone would send a plain "not
 	// allowed" down the wrong-key path below.
-	case status == 403:
+	case status == 403, status == 402:
+		if subs {
+			return a.t(
+				"Bu abonelik hesabının kullanım hakkı sona ermiş ya da bu modele erişim izni yok; modelleri listeden kaldırıldı. Ayarlar › Abonelikler'den durumu kontrol edebilir veya başka bir model seçebilirsin."+tag,
+				"This subscription account's usage allowance has ended or is not allowed to use this model; its models have been removed from the list. Check Settings › Subscriptions or pick another model."+tag), true
+		}
 		return a.t(
 			"Bu hesabın bu modele ya da işleme erişim izni yok. Hesabını/planını kontrol et ya da başka bir model seç."+tag,
 			"This account is not allowed to use this model or action. Check your account or plan, or pick another model."+tag), true

@@ -140,7 +140,7 @@ func (a *App) subsImageModels(ctx context.Context, cfg provider.ProviderConfig, 
 func (a *App) subsModelList(ctx context.Context) []cliproxy.Model {
 	m := a.subsManager()
 	if list := m.CachedModels(); len(list) > 0 {
-		return list
+		return m.FilterActiveModels(list)
 	}
 	if !m.Running() {
 		return nil
@@ -151,7 +151,7 @@ func (a *App) subsModelList(ctx context.Context) []cliproxy.Model {
 	if err != nil {
 		return nil
 	}
-	return list
+	return m.FilterActiveModels(list)
 }
 
 // resolveImageTarget finds where a picture request goes right now. ok is false

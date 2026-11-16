@@ -84,6 +84,8 @@ type Manager struct {
 	modelsMem *modelsMemo
 	quotaMem  *quotaMemo
 	snap      quotaSnapshot
+	endedMu   sync.Mutex
+	ended     map[string]EndedVendor
 }
 
 // state is what must survive a restart: the API key the provider entry carries
@@ -107,6 +109,7 @@ func New(dir string) *Manager {
 	}
 	m := &Manager{dir: dir}
 	m.loadState()
+	m.loadEnded()
 	return m
 }
 

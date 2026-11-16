@@ -155,6 +155,9 @@ func (a *App) streamImageGeneration(ctx context.Context, gen provider.ImageGener
 
 	resp, err := gen.GenerateImage(genCtx, provider.ImageRequest{Model: model, Prompt: prompt, Images: images})
 	if err != nil {
+		if genCtx.Err() == nil && a.GetActiveProvider() == subsProviderName {
+			a.noteSubscriptionError(subsProviderName, model, err.Error())
+		}
 		errMsg := "⚠️ " + err.Error()
 		a.recordStreamError(userMsg, errMsg, sessionID)
 		trySend(ctx, outCh, api.StreamChunk{Error: errMsg, Done: true})

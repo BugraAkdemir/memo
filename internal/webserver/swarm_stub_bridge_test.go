@@ -531,7 +531,10 @@ func (b *swarmStubBridge) WarmQuota()                                           
 func (b *swarmStubBridge) StartSubscriptionLogin(provider string) (string, error) { return "", nil }
 func (b *swarmStubBridge) CancelSubscriptionLogin()                               {}
 func (b *swarmStubBridge) SubmitSubscriptionCallback(callbackURL string) error    { return nil }
-func (b *swarmStubBridge) LogoutSubscription(provider string) error               { return nil }
+func (b *swarmStubBridge) LogoutSubscription(provider string) error { return nil }
+func (b *swarmStubBridge) RecheckSubscription(ctx context.Context, provider string) error {
+	return nil
+}
 func (b *swarmStubBridge) SetProviderModel(name, model string) error              { return nil }
 func (b *swarmStubBridge) ListProviderModels(ctx context.Context, name string) ([]models.ProviderModel, string, error) {
 	return nil, "", nil

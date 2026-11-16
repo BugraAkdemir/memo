@@ -690,6 +690,11 @@ class SubscriptionsNotifier extends AsyncNotifier<SubscriptionsState> {
     state = AsyncValue.data(next);
   }
 
+  Future<void> recheck(String provider) async {
+    final next = await ref.read(apiClientProvider).recheckSubscription(provider);
+    state = AsyncValue.data(next);
+  }
+
   Future<void> cancelLogin() async {
     final next = await ref.read(apiClientProvider).cancelSubscriptionLogin();
     state = AsyncValue.data(next);

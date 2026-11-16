@@ -216,21 +216,26 @@ func (m *Manager) accountQuotas(ctx context.Context) (out map[string]Quota, trie
 			continue
 		}
 		var q Quota
+		var status int
 		var ok bool
 		var ownedBy string
 		var qerr error
 		switch a.Provider {
 		case ProviderCodex:
 			ownedBy = "openai"
-			q, ok, qerr = fetchUsage(ctx, codexUsageURL, cred.AccessToken, map[string]string{"chatgpt-account-id": cred.AccountID}, parseCodexUsage)
+			q, status, ok, qerr = fetchUsage(ctx, codexUsageURL, cred.AccessToken, map[string]string{"chatgpt-account-id": cred.AccountID}, parseCodexUsage)
 		case ProviderClaude:
 			ownedBy = "anthropic"
-			q, ok, qerr = fetchUsage(ctx, claudeUsageURL, cred.AccessToken, map[string]string{"anthropic-beta": "oauth-2025-04-20"}, parseClaudeUsage)
+			q, status, ok, qerr = fetchUsage(ctx, claudeUsageURL, cred.AccessToken, map[string]string{"anthropic-beta": "oauth-2025-04-20"}, parseClaudeUsage)
+		}
+		if status == http.StatusForbidden || status == http.StatusPaymentRequired {
+			m.MarkVendorEnded(a.Provider, EndedSourceQuota, fmt.Sprintf("status %d", status))
 		}
 		if qerr != nil && firstErr == nil {
 			firstErr = qerr
 		}
 		if ok {
+			m.ClearQuotaEnded(a.Provider)
 			out[ownedBy] = q
 		}
 	}
@@ -242,12 +247,12 @@ func (m *Manager) accountQuotas(ctx context.Context) (out map[string]Quota, trie
 	return out, tried, nil
 }
 
-func fetchUsage(ctx context.Context, url, token string, extra map[string]string, parse func([]byte, time.Time) (Quota, bool)) (Quota, bool, error) {
+func fetchUsage(ctx context.Context, url, token string, extra map[string]string, parse func([]byte, time.Time) (Quota, bool)) (Quota, int, bool, error) {
 	cctx, cancel := context.WithTimeout(ctx, quotaFetchTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(cctx, http.MethodGet, url, nil)
 	if err != nil {
-		return Quota{}, false, ErrQuotaUnavailable
+		return Quota{}, 0, false, ErrQuotaUnavailable
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
@@ -259,21 +264,21 @@ func fetchUsage(ctx context.Context, url, token string, extra map[string]string,
 	}
 	resp, err := (&http.Client{}).Do(req)
 	if err != nil {
-		return Quota{}, false, fmt.Errorf("%w: %v", ErrQuotaUnavailable, redactErr(err))
+		return Quota{}, 0, false, fmt.Errorf("%w: %v", ErrQuotaUnavailable, redactErr(err))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return Quota{}, false, fmt.Errorf("%w: status %d", ErrQuotaUnavailable, resp.StatusCode)
+		return Quota{}, resp.StatusCode, false, fmt.Errorf("%w: status %d", ErrQuotaUnavailable, resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return Quota{}, false, ErrQuotaUnavailable
+		return Quota{}, resp.StatusCode, false, ErrQuotaUnavailable
 	}
 	q, ok := parse(body, time.Now())
 	if !ok {
-		return Quota{}, false, fmt.Errorf("%w: unexpected response", ErrQuotaUnavailable)
+		return Quota{}, resp.StatusCode, false, fmt.Errorf("%w: unexpected response", ErrQuotaUnavailable)
 	}
-	return q, true, nil
+	return q, resp.StatusCode, true, nil
 }
 
 // mostLimiting folds several windows into the one that is closest to empty.

@@ -1385,7 +1385,11 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			if err != nil {
 				logx.Printf("Provider stream error: %v", err)
 				if providerCtx.Err() == nil { // not our own cancel or watchdog
-					a.noteProviderFailure(activeName, a.activeProviderModel(activeName), err.Error())
+					errModel := a.activeProviderModel(activeName)
+					if route := subscriptionTextRouteFromCtx(ctx); route != nil {
+						errModel = routeModel(route)
+					}
+					a.noteProviderFailure(activeName, errModel, err.Error())
 				}
 				var errMsg string
 				if tm := a.streamTimeoutMsg(ctx, providerCtx); tm != "" {
@@ -2241,6 +2245,13 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message, category stri
 		resp, err := providerRouter.ChatCompletion(pctx, req)
 		if err != nil {
 			logx.Printf("Provider error: %v", err)
+			if pctx.Err() == nil {
+				errModel := a.activeProviderModel(activeName)
+				if route := subscriptionTextRouteFromCtx(ctx); route != nil {
+					errModel = routeModel(route)
+				}
+				a.noteSubscriptionError(activeName, errModel, err.Error())
+			}
 			if subscriptionTextRouteFromCtx(ctx) == nil && a.providerSwapped(providerRouter) {
 				return a.modelSwappedMidStreamMsg()
 			}

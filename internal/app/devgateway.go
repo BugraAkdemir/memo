@@ -103,7 +103,8 @@ func (a *App) ListGatewayModels() []models.GatewayModel {
 			// expose through the bundled sidecar, so external tools see the
 			// same list the model selector does ("subs/<model-id>").
 			if isSubsMarker(p) {
-				for _, md := range a.subsManager().CachedModels() {
+				m := a.subsManager()
+				for _, md := range m.FilterActiveModels(m.CachedModels()) {
 					out = append(out, models.GatewayModel{ID: subsGatewayPrefix + "/" + md.ID, Type: subsGatewayPrefix})
 				}
 				// Never list it as "custom/<model>": that spelling is for the

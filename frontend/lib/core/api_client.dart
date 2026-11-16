@@ -2253,6 +2253,13 @@ class MemoApiClient {
     return SubscriptionsState.fromJson(_guard<Map<String, dynamic>>(res.data));
   }
 
+  /// Clears a provider's entitlement-ended marker and re-checks its usage
+  /// allowance so a renewed plan becomes available without signing out.
+  Future<SubscriptionsState> recheckSubscription(String provider) async {
+    final res = await _dio.post('/api/subscriptions', data: {'action': 'recheck', 'provider': provider});
+    return SubscriptionsState.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
   /// The live model list of a CONFIGURED provider (by name) plus the model it
   /// currently uses. The stored API key is used on the backend and never comes
   /// back. [ProviderModelList.error] says why the list is empty when it failed.

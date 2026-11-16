@@ -188,7 +188,13 @@ func (a *App) SubscriptionsState(ctx context.Context) models.SubscriptionsState 
 
 	st.Accounts = []models.SubscriptionAccount{}
 	for _, ac := range m.Accounts() {
-		st.Accounts = append(st.Accounts, models.SubscriptionAccount{Provider: ac.Provider, Email: ac.Email, Project: ac.Project, Disabled: ac.Disabled})
+		st.Accounts = append(st.Accounts, models.SubscriptionAccount{
+			Provider:         ac.Provider,
+			Email:            ac.Email,
+			Project:          ac.Project,
+			Disabled:         ac.Disabled,
+			EntitlementEnded: ac.Disabled || m.IsVendorEnded(ac.Provider),
+		})
 	}
 
 	st.Models = []models.SubscriptionModel{}
@@ -203,6 +209,7 @@ func (a *App) SubscriptionsState(ctx context.Context) models.SubscriptionsState 
 	if list == nil {
 		list = m.CachedModels()
 	}
+	list = m.FilterActiveModels(list)
 	quotas := a.subsQuotas(ctx, len(list) > 0, 2*time.Second)
 	for _, md := range list {
 		sm := models.SubscriptionModel{ID: md.ID, OwnedBy: md.OwnedBy}
@@ -285,6 +292,7 @@ func (a *App) awaitSubscriptionLogin(provider string) {
 			logx.Printf("subs: %s login failed: %s", provider, st.Error)
 			return
 		}
+		m.ClearVendorEnded(provider)
 		if err := a.syncSubscriptions(a.lifecycle()); err != nil {
 			logx.Printf("subs: sync after %s login: %v", provider, err)
 		}
@@ -325,11 +333,9 @@ func (a *App) syncSubscriptions(ctx context.Context) error {
 	m := a.subsManager()
 	if !m.HasAccounts() {
 		m.Stop()
-		if _, ok := a.subsMarkerConfig(); ok {
-			if err := a.DeleteProvider(provider.ProviderCustom, subsProviderName); err != nil {
-				logx.Printf("subs: remove provider: %v", err)
-			}
-		}
+		a.subscriptionModelMu.Lock()
+		a.disableSubscriptionsProviderLocked()
+		a.subscriptionModelMu.Unlock()
 		return nil
 	}
 
@@ -353,13 +359,21 @@ func (a *App) syncSubscriptions(ctx context.Context) error {
 	prev := ""
 	if p, ok := a.subsMarkerConfig(); ok && p.Model != "" {
 		prev = p.Model
-		if err := a.UpdateProvider(a.subscriptionMarker(m, prev)); err != nil {
-			logx.Printf("subs: early provider registration: %v", err)
+		if v := a.subsVendorForCachedModel(prev); v == "" || !m.IsVendorEnded(v) {
+			if err := a.UpdateProvider(a.subscriptionMarker(m, prev)); err != nil {
+				logx.Printf("subs: early provider registration: %v", err)
+			}
 		}
 	}
 	a.subscriptionModelMu.Unlock()
 
 	var list []cliproxy.Model
+	accts := m.Accounts()
+	for i := range accts {
+		if m.IsVendorEnded(accts[i].Provider) {
+			accts[i].Disabled = true
+		}
+	}
 	for deadline := time.Now().Add(subsModelsTimeout); ; {
 		l, err := m.Models(sctx)
 		if err == nil && len(l) > 0 {
@@ -367,7 +381,7 @@ func (a *App) syncSubscriptions(ctx context.Context) error {
 			// A user's earlier pick that is not in this list may simply not have
 			// been listed yet: keep waiting while a signed-in vendor is missing,
 			// instead of replacing the choice (and saving the replacement).
-			stillWarming := prev != "" && !subsListComplete(l, m.Accounts()) && !modelListed(l, prev)
+			stillWarming := prev != "" && !subsListComplete(l, accts) && !modelListed(l, prev)
 			if !stillWarming || time.Now().After(deadline) {
 				break
 			}
@@ -384,13 +398,18 @@ func (a *App) syncSubscriptions(ctx context.Context) error {
 		}
 	}
 
+	active := m.FilterActiveModels(list)
 	a.subscriptionModelMu.Lock()
 	defer a.subscriptionModelMu.Unlock()
+	if len(active) == 0 {
+		a.disableSubscriptionsProviderLocked()
+		return nil
+	}
 	chosen := prev
 	if p, ok := a.subsMarkerConfig(); ok && p.Model != "" {
 		chosen = p.Model
 	}
-	return a.UpdateProvider(a.subscriptionMarker(m, pickDefaultSubscriptionModel(list, chosen)))
+	return a.UpdateProvider(a.subscriptionMarker(m, pickDefaultSubscriptionModel(active, chosen)))
 }
 
 // Timing for syncSubscriptions — vars so tests can shorten them.
@@ -524,6 +543,7 @@ func (a *App) ListProviderModels(ctx context.Context, name string) ([]models.Pro
 		} else {
 			list = m.CachedModels()
 		}
+		list = m.FilterActiveModels(list)
 		quotas := a.subsQuotas(ctx, len(list) > 0, models.QuotaWaitFromContext(ctx))
 		catalog := modelcatalog.Shared()
 		_ = catalog.Ensure(ctx)
@@ -541,7 +561,11 @@ func (a *App) ListProviderModels(ctx context.Context, name string) ([]models.Pro
 			}
 			out = append(out, pm)
 		}
-		return out, cfg.Model, nil
+		current := cfg.Model
+		if len(out) == 0 {
+			current = ""
+		}
+		return out, current, nil
 	}
 
 	key := name + "|" + string(cfg.Type) + "|" + cfg.BaseURL
@@ -612,4 +636,168 @@ func mergeConfiguredModels(catalog []models.ProviderModel, cfg provider.Provider
 		out = append(out, models.ProviderModel{ID: cfg.Model})
 	}
 	return out
+}
+
+// RecheckSubscription clears the entitlement-ended marker for provider (or all
+// providers when empty) and re-probes quota/sync so a renewed subscription
+// returns to the picker without having to sign out and back in.
+func (a *App) RecheckSubscription(ctx context.Context, prov string) error {
+	m := a.subsManager()
+	m.RecheckVendor(ctx, prov)
+	if !m.HasAccounts() {
+		return nil
+	}
+	return a.syncSubscriptions(ctx)
+}
+
+func isSubsEntitlementError(errText string) bool {
+	if strings.TrimSpace(errText) == "" {
+		return false
+	}
+	st := errStatus(errText)
+	if st == 403 || st == 402 {
+		return true
+	}
+	if st != 0 {
+		return false
+	}
+	lower := strings.ToLower(errText)
+	return containsAny(lower,
+		"not allowed to use this model",
+		"account is not allowed",
+		"permission denied",
+		"forbidden",
+		"access denied",
+		"subscription expired",
+		"subscription has expired",
+		"no active subscription",
+		"account_deactivated",
+		"account deactivated",
+		"billing_not_active",
+		"plan does not include",
+	)
+}
+
+func (a *App) subsVendorForCachedModel(model string) string {
+	if model == "" {
+		return ""
+	}
+	for _, md := range a.subsManager().CachedModels() {
+		if md.ID == model {
+			return cliproxy.ProviderForOwner(md.OwnedBy)
+		}
+	}
+	return ""
+}
+
+func (a *App) subsVendorForModel(ctx context.Context, model string) string {
+	if v := a.subsVendorForCachedModel(model); v != "" {
+		return v
+	}
+	m := a.subsManager()
+	if m.Running() && model != "" {
+		qctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		list, err := m.Models(qctx)
+		cancel()
+		if err == nil {
+			for _, md := range list {
+				if md.ID == model {
+					if v := cliproxy.ProviderForOwner(md.OwnedBy); v != "" {
+						return v
+					}
+				}
+			}
+		}
+	}
+	var active []string
+	seen := map[string]bool{}
+	for _, ac := range m.Accounts() {
+		if ac.Disabled || m.IsVendorEnded(ac.Provider) || seen[ac.Provider] {
+			continue
+		}
+		seen[ac.Provider] = true
+		active = append(active, ac.Provider)
+	}
+	if len(active) == 1 {
+		return active[0]
+	}
+	return ""
+}
+
+func hasActiveSubsAccount(m *cliproxy.Manager) bool {
+	for _, ac := range m.Accounts() {
+		if !ac.Disabled && !m.IsVendorEnded(ac.Provider) {
+			return true
+		}
+	}
+	return false
+}
+
+// noteSubscriptionError marks the owning vendor ended when a Subscriptions
+// turn fails with 403/402/entitlement-ended, hides its models, and moves the
+// Subscriptions provider to another valid vendor's model (or disables it).
+func (a *App) noteSubscriptionError(providerName, model, errText string) {
+	if providerName != subsProviderName || !isSubsEntitlementError(errText) {
+		return
+	}
+	m := a.subsManager()
+	vendor := a.subsVendorForModel(a.lifecycle(), model)
+	if vendor == "" {
+		return
+	}
+	if m.MarkVendorEnded(vendor, cliproxy.EndedSourceInference, errText) {
+		logx.Printf("subs: %s usage entitlement ended (%s); hiding its models", vendor, model)
+	}
+	a.reconcileSubscriptionsAfterEnd()
+}
+
+func (a *App) reconcileSubscriptionsAfterEnd() {
+	m := a.subsManager()
+	list := m.CachedModels()
+	if list == nil && m.Running() {
+		qctx, cancel := context.WithTimeout(a.lifecycle(), 2*time.Second)
+		if l, err := m.Models(qctx); err == nil {
+			list = l
+		}
+		cancel()
+	}
+
+	a.subscriptionModelMu.Lock()
+	defer a.subscriptionModelMu.Unlock()
+	cfg, ok := a.subsMarkerConfig()
+	if !ok {
+		return
+	}
+	if list == nil {
+		if !hasActiveSubsAccount(m) {
+			a.disableSubscriptionsProviderLocked()
+		}
+		return
+	}
+	active := m.FilterActiveModels(list)
+	if len(active) == 0 {
+		a.disableSubscriptionsProviderLocked()
+		return
+	}
+	if !modelListed(active, cfg.Model) {
+		if next := pickDefaultSubscriptionModel(active, ""); next != "" {
+			if err := a.UpdateProvider(a.subscriptionMarker(m, next)); err != nil {
+				logx.Printf("subs: fallback model switch failed: %v", err)
+			}
+		}
+	}
+}
+
+func (a *App) disableSubscriptionsProviderLocked() {
+	if _, ok := a.subsMarkerConfig(); !ok {
+		return
+	}
+	wasActive := a.GetActiveProvider() == subsProviderName
+	if err := a.DeleteProvider(provider.ProviderCustom, subsProviderName); err != nil {
+		logx.Printf("subs: remove provider: %v", err)
+		return
+	}
+	if wasActive {
+		a.SetActiveProvider("")
+	}
 }

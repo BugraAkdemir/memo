@@ -84,6 +84,7 @@ func (m *Manager) Logout(provider string) error {
 			firstErr = err
 		}
 	}
+	m.ClearVendorEnded(provider)
 	m.invalidateModels()
 	return firstErr
 }

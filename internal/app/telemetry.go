@@ -218,6 +218,7 @@ func providerErrorCode(text string) string {
 // the person's own provider name). Local engines are reported through their own
 // start/exit counters instead.
 func (a *App) noteProviderFailure(providerName, model, errText string) {
+	a.noteSubscriptionError(providerName, model, errText)
 	code := providerErrorCode(errText)
 	if code == "" {
 		return

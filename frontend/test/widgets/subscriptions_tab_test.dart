@@ -33,6 +33,11 @@ class _FakeSubscriptions extends SubscriptionsNotifier {
   }
 
   @override
+  Future<void> recheck(String provider) async {
+    log.add('recheck:$provider');
+  }
+
+  @override
   Future<void> cancelLogin() async {
     log.add('cancel');
   }
@@ -259,5 +264,74 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 120));
     expect(fake.reloads, 0);
+  });
+
+  testWidgets('entitlement-ended account shows ended message and recheck action without overflow', (tester) async {
+    final log = <String>[];
+    await _pump(
+      tester,
+      const SubscriptionsState(
+        bundled: true,
+        version: 'v8.0.16',
+        running: true,
+        providers: ['antigravity', 'claude', 'codex'],
+        accounts: [
+          SubscriptionAccount(
+            provider: 'claude',
+            email: 'ended@example.com',
+            entitlementEnded: true,
+          ),
+          SubscriptionAccount(
+            provider: 'antigravity',
+            email: 'ok@example.com',
+          ),
+        ],
+        models: [
+          ProviderModel(id: 'gpt-oss-120b-medium', ownedBy: 'antigravity', remaining: 1.0),
+        ],
+      ),
+      log: log,
+      locale: MemoLocale.tr,
+      size: const Size(360, 1400),
+    );
+    expect(tester.takeException(), isNull);
+    expect(
+      find.text(L10n.t('subs_entitlement_ended_as', {'email': 'ended@example.com'})),
+      findsOneWidget,
+    );
+    expect(
+      find.text(L10n.t('subs_signed_in_as', {'email': 'ok@example.com'})),
+      findsOneWidget,
+    );
+
+    await tester.ensureVisible(find.text(L10n.t('subs_recheck')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(L10n.t('subs_recheck')));
+    await tester.pumpAndSettle();
+    expect(log, ['recheck:claude']);
+  });
+
+  testWidgets('when all accounts ended and no models remain, models panel explains why', (tester) async {
+    await _pump(
+      tester,
+      const SubscriptionsState(
+        bundled: true,
+        version: 'v8.0.16',
+        running: true,
+        providers: ['antigravity', 'claude', 'codex'],
+        accounts: [
+          SubscriptionAccount(
+            provider: 'claude',
+            email: 'ended@example.com',
+            entitlementEnded: true,
+          ),
+        ],
+        models: [],
+      ),
+      locale: MemoLocale.tr,
+    );
+    expect(find.text(L10n.t('subs_models_ended')), findsOneWidget);
+    expect(find.text(L10n.t('subs_models_none')), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }

@@ -52,13 +52,14 @@ List<ModelPickerEntry> chatModelPickerEntries({
           p.enabled &&
           (ProviderDefaults.isCLIType(p.type) || p.chatModels.isNotEmpty),
     ))
-      if (p.name == kSubscriptionsProviderName && subscriptionModels.isNotEmpty)
-        ...subscriptionModelPickerEntries(
-          p,
-          subscriptionModels,
-          effective == p.name,
-        )
-      else if (!ProviderDefaults.isCLIType(p.type))
+      if (p.name == kSubscriptionsProviderName) ...[
+        if (subscriptionModels.isNotEmpty)
+          ...subscriptionModelPickerEntries(
+            p,
+            subscriptionModels,
+            effective == p.name,
+          ),
+      ] else if (!ProviderDefaults.isCLIType(p.type))
         ...providerModelPickerEntries(p, isActive: effective == p.name)
       else
         ModelPickerEntry.item(

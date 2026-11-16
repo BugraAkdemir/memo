@@ -37,6 +37,7 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
   String _loginFor = ''; // provider whose sign-in this tab is waiting on
   String _authUrl = '';
   bool _starting = false;
+  String _rechecking = '';
   bool _pasteSent =
       false; // the callback URL was handed over; wait for the login
 
@@ -71,7 +72,10 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
   /// section) until the app was reopened. Re-read every few seconds until the
   /// models arrive, then refresh the selectors that cached the empty answer.
   void _watchForModels(SubscriptionsState st) {
-    final waiting = st.bundled && st.accounts.isNotEmpty && st.models.isEmpty;
+    final hasActiveAccount = st.accounts.any(
+      (a) => !a.entitlementEnded && !a.disabled,
+    );
+    final waiting = st.bundled && hasActiveAccount && st.models.isEmpty;
     if (!waiting || _modelsPoll != null) return;
     var ticks = 0;
     _modelsPoll = Timer.periodic(const Duration(seconds: 3), (t) async {
@@ -201,6 +205,19 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
     }
   }
 
+  Future<void> _recheck(String provider) async {
+    if (_rechecking.isNotEmpty) return;
+    setState(() => _rechecking = provider);
+    try {
+      await ref.read(subscriptionsProvider.notifier).recheck(provider);
+      _refreshModelSelectors();
+    } catch (e) {
+      _toast(L10n.t('subs_error', {'e': FriendlyError.describeGeneric(e)}));
+    } finally {
+      if (mounted) setState(() => _rechecking = '');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = MemoTheme.of(context);
@@ -327,6 +344,9 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
     final accounts = st.accountsFor(provider);
     final waiting = _loginFor == provider;
     final signedIn = accounts.isNotEmpty;
+    final ended =
+        signedIn && accounts.every((a) => a.entitlementEnded || a.disabled);
+    final rechecking = _rechecking == provider;
 
     return _Panel(
       child: Column(
@@ -335,11 +355,15 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
           Row(
             children: [
               Icon(
-                signedIn
-                    ? Icons.check_circle_rounded
-                    : Icons.radio_button_unchecked_rounded,
+                ended
+                    ? Icons.error_outline_rounded
+                    : (signedIn
+                          ? Icons.check_circle_rounded
+                          : Icons.radio_button_unchecked_rounded),
                 size: 18,
-                color: signedIn ? MemoTheme.green : theme.textDim,
+                color: ended
+                    ? MemoTheme.warningOrange
+                    : (signedIn ? MemoTheme.green : theme.textDim),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -356,18 +380,32 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      signedIn
+                      ended
                           ? accounts
                                 .map(
                                   (a) => a.email.isEmpty
-                                      ? L10n.t('subs_signed_in')
-                                      : L10n.t('subs_signed_in_as', {
+                                      ? L10n.t('subs_entitlement_ended')
+                                      : L10n.t('subs_entitlement_ended_as', {
                                           'email': a.email,
                                         }),
                                 )
                                 .join('\n')
-                          : L10n.t('subs_not_signed_in'),
-                      style: TextStyle(fontSize: 12, color: theme.textDim),
+                          : (signedIn
+                                ? accounts
+                                      .map(
+                                        (a) => a.email.isEmpty
+                                            ? L10n.t('subs_signed_in')
+                                            : L10n.t('subs_signed_in_as', {
+                                                'email': a.email,
+                                              }),
+                                      )
+                                      .join('\n')
+                                : L10n.t('subs_not_signed_in')),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: ended ? FontWeight.w600 : FontWeight.w400,
+                        color: ended ? MemoTheme.warningOrange : theme.textDim,
+                      ),
                     ),
                   ],
                 ),
@@ -394,6 +432,26 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
                 ),
             ],
           ),
+          if (ended && !waiting) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: rechecking ? null : () => _recheck(provider),
+                  icon: rechecking
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh_rounded, size: 16),
+                  label: Text(L10n.t('subs_recheck')),
+                ),
+              ],
+            ),
+          ],
           if (waiting) ...[
             const SizedBox(height: 12),
             Row(
@@ -452,8 +510,19 @@ class _SubscriptionsTabState extends ConsumerState<SubscriptionsTab> {
           const SizedBox(height: 6),
           if (st.models.isEmpty)
             Text(
-              L10n.t('subs_models_none'),
-              style: TextStyle(fontSize: 12, color: theme.textDim),
+              (st.accounts.isNotEmpty &&
+                      st.accounts.every((a) => a.entitlementEnded || a.disabled))
+                  ? L10n.t('subs_models_ended')
+                  : L10n.t('subs_models_none'),
+              style: TextStyle(
+                fontSize: 12,
+                color: (st.accounts.isNotEmpty &&
+                        st.accounts.every(
+                          (a) => a.entitlementEnded || a.disabled,
+                        ))
+                    ? MemoTheme.warningOrange
+                    : theme.textDim,
+              ),
             )
           else ...[
             Text(

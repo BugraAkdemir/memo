@@ -19,6 +19,7 @@ import '../models/token_usage.dart';
 import 'agent_provider.dart';
 import 'auth_gate_provider.dart';
 import 'gate_guard.dart';
+import 'provider_provider.dart';
 import 'settings_provider.dart';
 import 'quota_notice_provider.dart';
 import '../core/friendly_error.dart';
@@ -1126,6 +1127,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       _stopped = false;
       ref.read(errorMessageProvider.notifier).state =
           '${L10n.t('error')}: Mesaj gönderilemedi (${FriendlyError.describeGeneric(e)})';
+      _refreshOnEntitlementError(e);
       ref.read(streamingContentProvider.notifier).state = '';
       ref.read(streamingModelRouteProvider.notifier).state = null;
       ref.read(streamingThinkingProvider.notifier).state = '';
@@ -1149,6 +1151,20 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
         ref.read(isSendingProvider.notifier).state = false;
         _timingEnd();
       }
+    }
+  }
+
+  void _refreshOnEntitlementError(Object e) {
+    final lower = e.toString().toLowerCase();
+    if (lower.contains('403') ||
+        lower.contains('402') ||
+        lower.contains('not allowed') ||
+        lower.contains('usage allowance has ended') ||
+        lower.contains('kullanım hakkı sona')) {
+      ref.invalidate(providerListProvider);
+      ref.invalidate(activeProviderTypeProvider);
+      ref.invalidate(subscriptionsProvider);
+      ref.invalidate(gatewayModelsProvider);
     }
   }
 
@@ -1378,6 +1394,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       if (_generation != myGeneration) return '';
       ref.read(errorMessageProvider.notifier).state =
           '${L10n.t('error')}: Dosya gönderilemedi (${FriendlyError.describeGeneric(e)})';
+      _refreshOnEntitlementError(e);
       ref.read(streamingContentProvider.notifier).state = '';
       ref.read(streamingModelRouteProvider.notifier).state = null;
       ref.read(streamingThinkingProvider.notifier).state = '';

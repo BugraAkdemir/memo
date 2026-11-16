@@ -124,6 +124,13 @@ void main() {
         cliType: 'codex-cli',
       );
       expect(cli.where((e) => e.active).single.value, 'CLI');
+      // When Subscriptions has no active models (e.g. entitlement ended), it must
+      // not fall back to showing its stale configured model.
+      expect(
+        cli.any((e) => e.value?.contains(kSubscriptionsProviderName) ?? false),
+        isFalse,
+      );
+      expect(cli.any((e) => e.title == 'gpt-test-0'), isFalse);
     },
   );
   for (final selection in [

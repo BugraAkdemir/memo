@@ -7,12 +7,14 @@ class SubscriptionAccount {
   final String email;
   final String project;
   final bool disabled;
+  final bool entitlementEnded;
 
   const SubscriptionAccount({
     required this.provider,
     this.email = '',
     this.project = '',
     this.disabled = false,
+    this.entitlementEnded = false,
   });
 
   factory SubscriptionAccount.fromJson(Map<String, dynamic> json) => SubscriptionAccount(
@@ -20,6 +22,7 @@ class SubscriptionAccount {
         email: json['email'] as String? ?? '',
         project: json['project'] as String? ?? '',
         disabled: json['disabled'] as bool? ?? false,
+        entitlementEnded: json['entitlement_ended'] as bool? ?? false,
       );
 }
 

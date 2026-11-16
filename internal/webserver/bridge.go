@@ -307,6 +307,7 @@ type FullBridge interface {
 	// on another machine could not reach the sidecar's loopback listener with.
 	SubmitSubscriptionCallback(callbackURL string) error
 	LogoutSubscription(provider string) error
+	RecheckSubscription(ctx context.Context, provider string) error
 	// SetProviderModel changes one configured provider's model by Name,
 	// preserving the rest of its config (the model selectors use this).
 	SetProviderModel(name, model string) error

@@ -63,6 +63,53 @@ func (a *App) communicationToolNames(ctx context.Context) []string {
 	return names
 }
 
+// excludedAgentTools returns the names of built-in tools whose backing
+// integration is inactive or unconfigured for this turn, so neither full nor
+// on-demand tool lists waste schema tokens advertising unusable tools.
+func (a *App) excludedAgentTools(ctx context.Context) map[string]bool {
+	excluded := make(map[string]bool)
+	commAllowed := tools.CommunicationAllowed(ctx)
+
+	a.twinMu.RLock()
+	twinReady := commAllowed && a.twinStore != nil && a.twinStore.Active(ctx)
+	a.twinMu.RUnlock()
+	if !twinReady {
+		for _, n := range []string{"twin_contacts", "twin_pending_actions", "twin_commitments", "contact_timeline", "check_availability", "git_project_status", "dev_status"} {
+			excluded[n] = true
+		}
+	}
+
+	a.mailMu.RLock()
+	mgr := a.mailManager
+	a.mailMu.RUnlock()
+	if !commAllowed || mgr == nil || len(mgr.ListAccounts()) == 0 {
+		for _, n := range []string{"mail_accounts", "mail_inbox", "mail_search", "mail_read", "mail_download_attachment", "mail_send", "mail_save_draft"} {
+			excluded[n] = true
+		}
+	}
+
+	a.waMu.Lock()
+	wa := a.waClient
+	a.waMu.Unlock()
+	if !commAllowed || wa == nil || !wa.IsConnected() {
+		for _, n := range []string{"whatsapp_send", "whatsapp_search", "whatsapp_latest", "whatsapp_messages"} {
+			excluded[n] = true
+		}
+	}
+
+	a.tgMu.Lock()
+	tg, store := a.tgClient, a.tgStore
+	a.tgMu.Unlock()
+	if !commAllowed || tg == nil || !tg.IsRunning() || store == nil || !store.Get().Linked() {
+		excluded["telegram_send"] = true
+	}
+
+	if len(excluded) == 0 {
+		return nil
+	}
+	return excluded
+}
+
 // CallCommunicationTool uses the same application methods as the Mail UI:
 // outbound DLP therefore runs before any SMTP/IMAP connection, also for drafts.
 func (a *App) CallCommunicationTool(ctx context.Context, name string, raw json.RawMessage) (string, error) {

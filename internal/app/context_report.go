@@ -3,7 +3,7 @@
 package app
 
 import (
-	"encoding/json"
+	"context"
 	"strings"
 	"sync"
 	"time"
@@ -12,6 +12,7 @@ import (
 	"memo/internal/api"
 	"memo/internal/cliproxy"
 	"memo/internal/models"
+	"memo/internal/provider"
 	"memo/internal/truncate"
 )
 
@@ -129,25 +130,37 @@ func (a *App) realContextUsed(chatID, provider, model string, window int) (int, 
 	return u.prompt + u.completion, true
 }
 
+// agentToolDefs returns the non-compact tool definitions an agent turn for
+// chatID sends, with Code Mode filtering and disconnected integrations pruned.
+func (a *App) agentToolDefs(ctx context.Context, chatID string) []provider.ToolDefinition {
+	if !a.GetAgentEnabled() || a.agentExecutor == nil {
+		return nil
+	}
+	defs := a.agentExecutor.Registry().ToOpenAITools(a.activeSkillSet(chatID))
+	if excluded := a.excludedAgentTools(ctx); len(excluded) > 0 {
+		kept := defs[:0]
+		for _, d := range defs {
+			if !excluded[d.Function.Name] {
+				kept = append(kept, d)
+			}
+		}
+		defs = kept
+	}
+	if a.resolveCodeMode(chatID) {
+		defs = agent.ForCodeMode(defs) // the gauge must count what a Code Mode turn really sends
+	}
+	return defs
+}
+
 // agentToolTokens estimates the tool schema an agent turn sends alongside the
 // messages. It is real context the model's chat template folds into the prompt,
 // yet it travels in a separate "tools" field, so no message-based count sees it.
 func (a *App) agentToolTokens(chatID string) int {
-	if !a.GetAgentEnabled() || a.agentExecutor == nil {
-		return 0
-	}
-	defs := a.agentExecutor.Registry().ToOpenAITools(a.activeSkillSet(chatID))
-	if a.resolveCodeMode(chatID) {
-		defs = agent.ForCodeMode(defs) // the gauge must count what a Code Mode turn really sends
-	}
-	if len(defs) == 0 {
-		return 0
-	}
-	raw, err := json.Marshal(defs)
-	if err != nil {
-		return 0
-	}
-	return truncate.EstimateTokens(string(raw))
+	return a.agentToolTokensFor(context.Background(), chatID)
+}
+
+func (a *App) agentToolTokensFor(ctx context.Context, chatID string) int {
+	return agent.DefinitionTokens(a.agentToolDefs(ctx, chatID))
 }
 
 // currentContextWindow is the context window of whatever model a turn would run

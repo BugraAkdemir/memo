@@ -70,9 +70,11 @@ type Pipeline struct {
 	autoPermissionOverride *bool
 	// noWebTools hides web_search/fetch_page from this run (see ClientOptions).
 	noWebTools bool
-	// compactTools, when set, makes this a small-window run: the model starts
-	// with load_tools only and loads tool groups on demand (compact_tools.go).
+	// compactTools, when set, makes this an on-demand / compact turn: the
+	// model starts with load_tools only and loads tool groups on demand.
 	compactTools *CompactTools
+	// excludedTools hides tools whose backing integration/feature is absent.
+	excludedTools map[string]bool
 
 	// effortLevel is the active provider's resolved EffortLevel for this
 	// run (see provider.ChatRequest.EffortLevel's doc comment) — set by the
@@ -139,6 +141,15 @@ func (p *Pipeline) fullTurnTools() []provider.ToolDefinition {
 		kept := make([]provider.ToolDefinition, 0, len(defs))
 		for _, d := range defs {
 			if !webToolNames[d.Function.Name] {
+				kept = append(kept, d)
+			}
+		}
+		defs = kept
+	}
+	if len(p.excludedTools) > 0 {
+		kept := make([]provider.ToolDefinition, 0, len(defs))
+		for _, d := range defs {
+			if !p.excludedTools[d.Function.Name] {
 				kept = append(kept, d)
 			}
 		}
@@ -483,11 +494,20 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 					}
 					// Unknown names fall through to the "Unknown tool" answer below.
 					if td, ok := p.registry.Get(toolName); ok && td.SkillOwner == "" && !p.compactTools.offers(toolName) {
-						errMsg := NotLoadedError(toolName)
+						errMsg := p.compactTools.NotLoadedError(toolName)
+						if p.excludedTools[toolName] {
+							errMsg = fmt.Sprintf("tool %q is unavailable (integration not configured)", toolName)
+						}
 						onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Error: errMsg})
 						currentMessages = append(currentMessages, provider.Message{Role: "tool", ToolCallID: tc.ID, Content: "Error: " + errMsg})
 						continue
 					}
+				}
+				if p.excludedTools[toolName] {
+					errMsg := fmt.Sprintf("tool %q is unavailable (integration not configured)", toolName)
+					onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Error: errMsg})
+					currentMessages = append(currentMessages, provider.Message{Role: "tool", ToolCallID: tc.ID, Content: "Error: " + errMsg})
+					continue
 				}
 
 				// A tool this run hides is refused too: a model that saw it earlier

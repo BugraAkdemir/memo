@@ -31,6 +31,7 @@ func TestCommunicationAvailableWithoutAgentAndUsesNativeToolsWithAgent(t *testin
 		t.Run(map[bool]string{false: "off", true: "on"}[agentOn], func(t *testing.T) {
 			reqs := &capturedRequests{}
 			a := newSendMessageTestApp(t, reqs)
+			a.cfg.AgentMode.OnDemandTools = false
 			seedCommunicationMail(t, a)
 			if err := a.SetAgentEnabled(agentOn); err != nil {
 				t.Fatal(err)

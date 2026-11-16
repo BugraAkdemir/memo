@@ -247,7 +247,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		// live: "selam" with agent mode on and a 32B local model produced a
 		// ~4800-token request against a 4096 ctx-size — the visible message
 		// content was a handful of tokens, the rest was this unbudgeted gap.
-		toolTokens = a.agentToolTokens(chatID)
+		toolTokens = a.agentToolTokensFor(ctx, chatID)
 		tokenBudget -= toolTokens
 		if tokenBudget < 512 {
 			tokenBudget = 512
@@ -280,7 +280,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		// An API turn used to ignore it, so a long agent chat could send
 		// window − tools + tools… i.e. a request the provider rejects as too
 		// long; it is now taken off the history's share below.
-		toolTokens = a.agentToolTokens(chatID)
+		toolTokens = a.agentToolTokensFor(ctx, chatID)
 	}
 
 	// Compact profile (compact_mode.go): a model with a small real window
@@ -311,6 +311,15 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		if tokenBudget < 512 {
 			tokenBudget = 512
 		}
+	} else if a.onDemandToolsActive(ctx) {
+		onDemandTools := a.compactAgentToolTokens(ctx, chatID)
+		if localPrompt {
+			tokenBudget += toolTokens - onDemandTools
+			if tokenBudget < 512 {
+				tokenBudget = 512
+			}
+		}
+		toolTokens = onDemandTools
 	}
 
 	// Memory-block budget: a fraction of this turn's real tokenBudget on a

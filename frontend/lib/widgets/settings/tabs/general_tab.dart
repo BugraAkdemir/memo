@@ -715,6 +715,21 @@ class _GeneralTabState extends ConsumerState<GeneralTab> {
               ref.read(agentEnabledProvider.notifier).setEnabled(val),
         ),
 
+        SizedBox(height: 16),
+
+        // On-Demand Tool Loading Toggle
+        _buildFeatureToggleCard(
+          context,
+          sectionTitle: L10n.t('on_demand_tools_section'),
+          statusTitle: ref.watch(onDemandToolsProvider)
+              ? L10n.t('on_demand_tools_on')
+              : L10n.t('on_demand_tools_off'),
+          description: L10n.t('on_demand_tools_desc'),
+          value: ref.watch(onDemandToolsProvider),
+          onChanged: (val) =>
+              ref.read(onDemandToolsProvider.notifier).setEnabled(val),
+        ),
+
         SizedBox(height: 32),
 
         // Web Search Toggle

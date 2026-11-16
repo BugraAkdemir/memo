@@ -84,6 +84,7 @@ func newHarness(t *testing.T, setup func(*config.AppConfig)) *Harness {
 	cfg.WhatsApp.Enabled = false
 	cfg.Proactive.Enabled = false
 	cfg.Memory.DreamEnabled = false
+	cfg.AgentMode.OnDemandTools = false
 	if setup != nil {
 		setup(cfg)
 	}

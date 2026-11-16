@@ -52,6 +52,43 @@ class AgentEnabledNotifier extends StateNotifier<bool> {
   }
 }
 
+final onDemandToolsProvider =
+    StateNotifierProvider<OnDemandToolsNotifier, bool>((ref) {
+  return OnDemandToolsNotifier(ref);
+});
+
+class OnDemandToolsNotifier extends StateNotifier<bool> {
+  final Ref _ref;
+
+  OnDemandToolsNotifier(this._ref) : super(true) {
+    _init();
+  }
+
+  Future<void> _init() async {
+    try {
+      final enabled = await _ref.read(apiClientProvider).getOnDemandTools();
+      if (!mounted) return;
+      state = enabled;
+    } catch (e) {
+      debugPrint('agent: onDemandTools init error: ${FriendlyError.describeGeneric(e)}');
+    }
+  }
+
+  Future<void> setEnabled(bool enabled) async {
+    final previous = state;
+    state = enabled;
+    try {
+      await _ref.read(apiClientProvider).setOnDemandTools(enabled);
+    } catch (e) {
+      debugPrint('agent: setOnDemandTools error: ${FriendlyError.describeGeneric(e)}');
+      if (!mounted) return;
+      state = previous;
+      _ref.read(errorMessageProvider.notifier).state = L10n.t(
+          'on_demand_tools_toggle_error', {'e': FriendlyError.describeGeneric(e)});
+    }
+  }
+}
+
 /// (effective, pinned) Code Mode state for one chat. `effective` is whether
 /// the coding preset is active for it; `pinned` is whether the user set that
 /// explicitly (vs. the project-chat default).

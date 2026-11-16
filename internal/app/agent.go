@@ -36,6 +36,28 @@ func (a *App) SetAgentEnabled(enabled bool) error {
 	return config.Save(cfg)
 }
 
+// GetOnDemandTools reports whether normal/large-window chats start with
+// load_tools only and load additional tool groups on demand.
+func (a *App) GetOnDemandTools() bool {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.cfg != nil && a.cfg.AgentMode.OnDemandTools
+}
+
+// SetOnDemandTools toggles on-demand tool loading and persists it to config.yaml.
+func (a *App) SetOnDemandTools(enabled bool) error {
+	a.cfgMu.Lock()
+	cfg := a.cfg
+	if cfg != nil {
+		cfg.AgentMode.OnDemandTools = enabled
+	}
+	a.cfgMu.Unlock()
+	if cfg == nil {
+		return nil
+	}
+	return config.Save(cfg)
+}
+
 // HandleAgentPermission records the user's policy decision for a pending permission request.
 func (a *App) HandleAgentPermission(requestID string, policy string) error {
 	if a.agentExecutor == nil {

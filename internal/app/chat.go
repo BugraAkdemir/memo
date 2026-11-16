@@ -14,6 +14,7 @@ import (
 	"memo/internal/agent"
 	"memo/internal/agent/tools"
 	"memo/internal/api"
+	"memo/internal/identity"
 	moodpkg "memo/internal/mood"
 	"memo/internal/taskloop"
 )
@@ -379,7 +380,7 @@ func (a *App) routeStreamInner(ctx context.Context, messages []api.Message, user
 	if !minimal {
 		channelTools = a.communicationToolNames(ctx)
 	}
-	if !code && (agentActive || len(channelTools) > 0) {
+	if !code && len(channelTools) > 0 {
 		for i, msg := range messages {
 			if msg.Role == "system" {
 				if content, ok := msg.Content.(string); ok {
@@ -391,6 +392,7 @@ func (a *App) routeStreamInner(ctx context.Context, messages []api.Message, user
 	}
 	if agentActive {
 		ctx = a.withDecisionReview(ctx, userMsg)
+		onDemand := a.onDemandToolsActive(ctx) && a.compactTurnWindow(ctx) == 0
 		for i, msg := range messages {
 			if msg.Role == "system" {
 				if content, ok := msg.Content.(string); ok {
@@ -398,6 +400,9 @@ func (a *App) routeStreamInner(ctx context.Context, messages []api.Message, user
 						messages[i].Content = content + buildCodeAgentSystemPrompt()
 					} else {
 						messages[i].Content = content + buildAgentSystemPrompt()
+					}
+					if onDemand {
+						messages[i].Content = messages[i].Content.(string) + "\n" + identity.CompactAgentRule
 					}
 				}
 				break

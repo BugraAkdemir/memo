@@ -430,6 +430,7 @@ func (e *Executor) RunStreamWithRouter(ctx context.Context, router *provider.Rou
 	pipeline.autoPermissionOverride = co.AutoPermission
 	pipeline.noWebTools = co.NoWebTools
 	pipeline.compactTools = compactToolsFromCtx(ctx)
+	pipeline.excludedTools = excludedToolsFromCtx(ctx)
 	pipeline.effortLevel = effortLevel
 	pipeline.activeSkills = e.resolveActiveSkillSet(sessionID)
 	if explicit, ok := ctx.Value(subAgentSkillsKey{}).(map[string]bool); ok {

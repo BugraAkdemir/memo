@@ -601,6 +601,13 @@ class L10n {
     'agent_mode_tooltip':
         'Agent modu — dosya okuma/yazma ve komut çalıştırma araçlarını etkinleştirir.',
     'agent_mode_toggle_error': 'Agent modu değiştirilemedi: \${e}',
+    'on_demand_tools_section': 'İsteğe Bağlı Araç Yükleme',
+    'on_demand_tools_on': 'Etkin — Araçlar Gerektiğinde Yüklenir',
+    'on_demand_tools_off': 'Kapalı — Tüm Araçlar Her Turda Gönderilir',
+    'on_demand_tools_desc':
+        'Başlangıçta yalnızca load_tools göndererek her turdaki ~10K araç bağlamı tüketimini düşürür; model gereken grupları kendisi yükler.',
+    'on_demand_tools_toggle_error':
+        'İsteğe bağlı araç ayarı değiştirilemedi: \${e}',
     'web_search_section': 'Web Araması',
     'web_search_toggle_desc':
         'Açıkken model gerektiğinde web araması yaparak güncel bilgilere erişebilir.',
@@ -3726,6 +3733,13 @@ class L10n {
     'agent_mode_tooltip':
         'Agent mode — enables file read/write and command-execution tools.',
     'agent_mode_toggle_error': 'Failed to toggle agent mode: \${e}',
+    'on_demand_tools_section': 'On-Demand Tool Loading',
+    'on_demand_tools_on': 'Active — Tools Load on Demand',
+    'on_demand_tools_off': 'Off — All Tools Sent Every Turn',
+    'on_demand_tools_desc':
+        'Sends only load_tools initially to cut ~10K per-turn tool schema overhead; the model loads needed groups on demand.',
+    'on_demand_tools_toggle_error':
+        'Failed to toggle on-demand tools: \${e}',
     'web_search_section': 'Web Search',
     'web_search_toggle_desc':
         'When enabled, the model can search the web whenever up-to-date information is needed.',

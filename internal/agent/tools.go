@@ -114,8 +114,8 @@ func (r *ToolRegistry) registerBuiltins() {
 
 	r.Register(ToolDef{
 		Name:        "change_directory",
-		Description: "Changes the agent's working-directory sandbox to a different directory for the rest of this conversation. Every other file tool (read_file, write_file, run_command, etc.) is scoped to this directory afterward. Call this when the user explicitly asks you to work somewhere else, AND proactively when a file/command tool call fails with an 'outside the project directory' error and the user's request implies they want you working at that other location (e.g. they asked for a file on their Desktop) — in that case, tell them where you'd switch to and call this once they confirm, rather than telling them to move the file into your current directory instead. Relative paths resolve against the current working directory, and '~' resolves to the user's home; set create_if_missing to true if creating a new folder first.",
-		Parameters:  json.RawMessage(`{"type": "object", "properties": {"path": {"type": "string", "description": "Path to the directory to switch to"}, "create_if_missing": {"type": "boolean", "description": "Create the target directory (with parents) if it does not exist yet"}}, "required": ["path"]}`),
+		Description: "Changes the agent's working-directory sandbox for this conversation. Resolve relative paths and '~'; set create_if_missing=true to create a missing folder. Confirm with the user before switching away from the project root.",
+		Parameters:  json.RawMessage(`{"type": "object", "properties": {"path": {"type": "string", "description": "Directory path"}, "create_if_missing": {"type": "boolean", "description": "Create directory if missing"}}, "required": ["path"]}`),
 		DangerLevel: Dangerous,
 		ExecuteFn:   tools.ChangeDirectory,
 		PreviewFn:   tools.ChangeDirectoryPreview,
@@ -227,21 +227,21 @@ func (r *ToolRegistry) registerBuiltins() {
 
 	r.Register(ToolDef{
 		Name:        "get_task_status",
-		Description: "Çalışan otonom görev (Self-Driving / Task.md döngüsü) durumunu OKUR: faz, adım N/M, madde a/b, o an işlenen adım, geçen süre. Kullanıcı \"görev ne durumda\", \"nerede kaldı\", \"bitti mi\" gibi bir şey sorduğunda TAHMİN ETME — bu aracı çağır. Araç \"çalışan görev yok\" derse, öyle söyle; asla durum uydurma.",
+		Description: "Çalışan otonom görevin (Task.md döngüsü) durumunu okur: faz, adım ve kalan maddeler. Tahmin etme; görev yoksa bunu bildir.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.GetTaskStatus,
 	})
 	r.Register(ToolDef{
 		Name:        "pause_task",
-		Description: "Bu sohbete bağlı çalışan otonom görevi DURAKLATIR (kaldığı adım korunur). Kullanıcı görevi kastederek \"dur\", \"duraklat\", \"bekle\", \"stop\", \"pause\" dediğinde çağır. Duraklatınca kullanıcı serbestçe soru sorabilir; sonra resume_task ile aynı adımdan devam eder.",
+		Description: "Bu sohbete bağlı çalışan otonom görevi duraklatır (kaldığı adım korunur).",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.PauseTask,
 	})
 	r.Register(ToolDef{
 		Name:        "resume_task",
-		Description: "Bu sohbete bağlı DURAKLATILMIŞ otonom görevi kaldığı adımdan SÜRDÜRÜR. Kullanıcı \"devam\", \"devam et\", \"kaldığın yerden devam\", \"continue\", \"resume\" ya da açıkça görevin sürmesini istediğini belirten bir şey dediğinde çağır. Duraklatmada kullanıcının yazdığı gerçek talimatlar (ekle/düzelt) bir sonraki adıma otomatik iletilir.",
+		Description: "Duraklatılmış otonom görevi kaldığı adımdan sürdürür.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.ResumeTask,
@@ -254,15 +254,15 @@ func (r *ToolRegistry) registerBuiltins() {
 func (r *ToolRegistry) registerTaskMdTools() {
 	r.Register(ToolDef{
 		Name:        "create_task_md",
-		Description: "Yeni bir Task.md dosyası yazar (Memo'nun otonom görev listesi formatında). Kullanıcı \"benimle bir task listesi/Task.md hazırla\", \"şu işi maddelere böl\" gibi bir şey dediğinde: önce sohbette hedefi ve ayrık, tek tek doğrulanabilir teslimatları netleştir, sonra bu aracı çağır. path: opsiyonel (verilmezse bu sohbetin proje klasöründe Task.md). items: onay kutulu maddeler (zorunlu). intro: hedefi anlatan kısa paragraf. notify: sadece-bitince|önemli|her-şey. mode: worker|planlayıcı. planner_model/coder_model/verifier_model: rol başına model sabitlemek istersen (ör. \"local\", \"claude\"). memory: açık|kapalı. auto_approve: plan onay kapısını atla. Dosya zaten varsa hata verir; değiştirmek için edit_task_md kullan.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Optional file path; defaults to Task.md in this chat's project folder"},"items":{"type":"array","items":{"type":"string"},"description":"Checkbox items — each a concrete, independently verifiable deliverable"},"intro":{"type":"string","description":"Short paragraph stating the goal and any context"},"notify":{"type":"string","description":"sadece-bitince | önemli | her-şey"},"mode":{"type":"string","description":"worker | planlayıcı"},"planner_model":{"type":"string"},"coder_model":{"type":"string"},"verifier_model":{"type":"string"},"memory":{"type":"string","description":"açık | kapalı"},"auto_approve":{"type":"boolean"}},"required":["items"]}`),
+		Description: "Yeni bir Task.md dosyası oluşturur (mevcutsa hata verir; düzenlemek için edit_task_md kullan). Önce hedefi ve doğrulanabilir maddeleri netleştir.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Task.md path (default: project Task.md)"},"items":{"type":"array","items":{"type":"string"},"description":"Checkbox items"},"intro":{"type":"string","description":"Short goal summary"},"notify":{"type":"string","description":"sadece-bitince | önemli | her-şey"},"mode":{"type":"string","description":"worker | planlayıcı"},"planner_model":{"type":"string"},"coder_model":{"type":"string"},"verifier_model":{"type":"string"},"memory":{"type":"string","description":"açık | kapalı"},"auto_approve":{"type":"boolean"}},"required":["items"]}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.CreateTaskMd,
 	})
 	r.Register(ToolDef{
 		Name:        "edit_task_md",
-		Description: "Var olan bir Task.md'yi yerinde düzenler, mevcut onay kutusu durumlarını ve başlıkları koruyarak. op: add_item (yeni madde ekle — text), split_item (item_index'teki maddeyi sub_items alt maddelerine böl, maddeye [parallel] ekler), set_header (header_key + header_value), check_item (item_index'teki maddeyi [x] yap). item_index 1 tabanlıdır ve iç içe maddeler dahil dosya sırasına göredir.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Task.md path; defaults to this chat's project Task.md"},"op":{"type":"string","enum":["add_item","split_item","set_header","check_item"]},"text":{"type":"string","description":"add_item: the new item text"},"item_index":{"type":"integer","description":"1-based, for split_item / check_item"},"sub_items":{"type":"array","items":{"type":"string"},"description":"split_item: the sub-item texts"},"header_key":{"type":"string","description":"set_header: e.g. bildirim, mod, kodlayıcı"},"header_value":{"type":"string"}},"required":["op"]}`),
+		Description: "Var olan Task.md dosyasını yerinde düzenler (add_item, split_item, set_header, check_item; item_index 1 tabanlıdır).",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Task.md path"},"op":{"type":"string","enum":["add_item","split_item","set_header","check_item"]},"text":{"type":"string","description":"add_item text"},"item_index":{"type":"integer","description":"1-based index"},"sub_items":{"type":"array","items":{"type":"string"},"description":"split_item sub-items"},"header_key":{"type":"string","description":"e.g. bildirim, mod, kodlayıcı"},"header_value":{"type":"string"}},"required":["op"]}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.EditTaskMd,
 	})
@@ -280,8 +280,8 @@ func (r *ToolRegistry) registerTaskMdTools() {
 func (r *ToolRegistry) registerCodePlanTool() {
 	r.Register(ToolDef{
 		Name:        "save_code_plan",
-		Description: "Saves the current implementation plan as Markdown to Memo's own plan storage — NOT the user's project, nothing here touches the project directory. Call this once your investigation is done and you have a concrete, reviewable, step-by-step plan — only in Code Mode's planning mode, never mid-edit. After it succeeds, ask the user in plain chat text whether to proceed in build mode (fast, auto-approved edits) or auto mode (normal confirm-as-you-go editing).",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"content":{"type":"string","description":"The full plan as Markdown"}},"required":["content"]}`),
+		Description: "Saves the step-by-step Markdown plan to Memo's plan storage (only in Code Mode planning mode). Afterward, ask the user whether to proceed in build or auto mode.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"content":{"type":"string","description":"Markdown plan"}},"required":["content"]}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.SaveCodePlan,
 	})
@@ -293,8 +293,8 @@ func (r *ToolRegistry) registerCodePlanTool() {
 func (r *ToolRegistry) registerProjectSkillTool() {
 	r.Register(ToolDef{
 		Name:        "install_project_skill",
-		Description: "Installs a skill from a GitHub source the user gave you (owner/repo, owner/repo/path, a github.com URL, or an `npx skills add ...` command): into `.memo/skills` when working in a set-up Memo project, or into Memo's global skills library so it works in normal, Telegram, and WhatsApp chats. Call it ONLY when the user explicitly asks to install a skill and has given the source; never choose a source yourself. Nothing is executed (an npx command is only read for its source): the skill is downloaded as plain files without execute permission and any tools it declares are ignored. Once installed globally, call `use_skill` to load it in the current chat (or the user can turn it on with `/skill:on <name>`). If the place holds several skills, the error lists them: ask which one and call again with `--skill <name>` added to the source.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"source":{"type":"string","description":"The user's source: owner/repo, owner/repo/path, a github.com URL, or the pasted npx command, optionally with --skill <name>"}},"required":["source"]}`),
+		Description: "Installs a plain-file skill from a user-provided GitHub source (owner/repo, URL, or npx skills add). Call only when the user explicitly gives a source; pass `--skill <name>` if multiple skills exist.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"source":{"type":"string","description":"GitHub source or npx command, optionally with --skill <name>"}},"required":["source"]}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.InstallProjectSkill,
 	})
@@ -306,8 +306,8 @@ func (r *ToolRegistry) registerProjectSkillTool() {
 func (r *ToolRegistry) registerUseSkillTool() {
 	r.Register(ToolDef{
 		Name:        "use_skill",
-		Description: "Loads one of the user's installed skills into this chat and returns its instructions, which you then follow. Call it when the user asks you to use a skill (by name or \"the necessary/relevant skills\"), or when an installed skill clearly fits the task. Call it with no name first to list the installed skills with a one-line description each, then call it again with the name you chose. The skill stays active for the rest of THIS chat only; a new chat starts without it. Do not load skills the task does not need.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"name":{"type":"string","description":"The skill's name or its /name form (e.g. pair-programming). Leave empty to list the installed skills."}}}`),
+		Description: "Lists installed skills (when name is empty) or activates one for this chat and returns its instructions.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"name":{"type":"string","description":"Skill name, or empty to list installed skills"}}}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.UseSkill,
 	})
@@ -321,8 +321,8 @@ func (r *ToolRegistry) registerUseSkillTool() {
 func (r *ToolRegistry) registerSelfDrivingTaskTool() {
 	r.Register(ToolDef{
 		Name:        "start_self_driving_task",
-		Description: "Bir Task.md dosyasından otonom (kendi kendine ilerleyen) bir görev döngüsü başlatır. Kullanıcı \"şu Task.md'ye başla\", \"bu görev listesini çalıştır\", \"Task.md'yi otonom yap\" gibi bir şey dediğinde çağır — sen tek tek yapmak yerine görev döngüsü maddeleri sırayla, planlama + alt-ajan desteğiyle işler. task_md_path: onay kutulu maddeler (- [ ]) içeren Task.md dosyasının yolu (mutlak ya da çalışma dizinine göreli, ~ desteklenir). title: opsiyonel görünen ad (verilmezse dosya adı). Görev bu sohbete bağlanır, arka planda çalışır; ilerleme Görevler sekmesinden ve \"görev durumu\" diye sorulunca görülür. Bu aracı çağırmak, maddelerin gerektirdiği dosya değişikliklerine onay vermek demektir.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"task_md_path":{"type":"string","description":"Path to a Task.md file containing '- [ ]' checkbox items (absolute, or relative to the working directory; ~ is expanded)"},"title":{"type":"string","description":"Optional display name for the task list; defaults to the file name"}},"required":["task_md_path"]}`),
+		Description: "Task.md dosyasındaki onay kutulu maddeler için otonom görev döngüsünü bu sohbete bağlı olarak arka planda başlatır.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"task_md_path":{"type":"string","description":"Path to Task.md file"},"title":{"type":"string","description":"Optional display name"}},"required":["task_md_path"]}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.StartSelfDrivingTask,
 	})
@@ -334,8 +334,8 @@ func (r *ToolRegistry) registerSelfDrivingTaskTool() {
 func (r *ToolRegistry) registerFileSenderTool() {
 	r.Register(ToolDef{
 		Name:        "share_file",
-		Description: "Bir dosyayı veya klasörü kullanıcıya gönderir. path: gönderilecek dosya/klasör yolu (agent'ın erişebildiği yerlerden biri olmalı). Klasör verilirse otomatik zip'lenir, tek dosya ise olduğu gibi gönderilir. Nereye gönderileceği (WhatsApp, Telegram, ya da bu masaüstü/web sohbeti) hiçbir zaman burada belirtilmez — her zaman bu konuşmanın kendisine gönderilir.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Gönderilecek dosya veya klasörün yolu"}},"required":["path"]}`),
+		Description: "Bu konuşmada kullanıcıya bir dosya veya klasör (otomatik zip'lenir) gönderir.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Dosya veya klasör yolu"}},"required":["path"]}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.ShareFile,
 	})
@@ -348,22 +348,22 @@ func (r *ToolRegistry) registerFileSenderTool() {
 func (r *ToolRegistry) registerRoutineTool() {
 	r.Register(ToolDef{
 		Name:        "create_routine",
-		Description: "Kullanıcının serbest metinle tarif ettiği zamanlanmış bir görev (rutin) oluşturur — örn. \"her gün saat 9'da yapay zeka haberlerini getir\" veya \"her pazartesi takvimimi özetle\". text: kullanıcının isteğini olduğu gibi (kendi cümleleriyle) aktar; zaman, gün, içerik ve hangi kanaldan (WhatsApp/Telegram) gönderileceği otomatik çıkarılır — teslimat hedefi hiçbir zaman burada belirtilmez, her zaman bu konuşmanın kendisine (ve o konuşmada açıkça istenen diğer bağlı kanallara) gönderilir.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"text":{"type":"string","description":"Kullanıcının rutin isteğinin serbest metin hali"}},"required":["text"]}`),
+		Description: "Kullanıcının serbest metin isteğinden (zaman, sıklık, içerik dahil) bu sohbete bağlı zamanlanmış bir rutin oluşturur.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"text":{"type":"string","description":"Kullanıcının rutin isteği"}},"required":["text"]}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.CreateRoutine,
 	})
 	r.Register(ToolDef{
 		Name:        "list_routines",
-		Description: "Kullanıcının tüm zamanlanmış rutinlerini listeler (id, prompt, saat, günler, hangi kanal(lar)dan gönderildiği, aktif olup olmadığı). Kullanıcı \"rutinlerimi göster\", \"hangi rutinlerim var\" gibi bir şey sorduğunda, ya da bir rutini iptal etmeden önce gerçek id'sini öğrenmek için bunu çağır.",
+		Description: "Kullanıcının zamanlanmış rutinlerini (id, prompt, zamanlama, durum) listeler.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.ListRoutines,
 	})
 	r.Register(ToolDef{
 		Name:        "cancel_routine",
-		Description: "Bir rutini kalıcı olarak siler. id: silinecek rutinin gerçek id'si — bunu tahmin etme, önce list_routines çağırıp oradaki gerçek id'yi kullan.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","description":"list_routines'ten alınan gerçek rutin id'si"}},"required":["id"]}`),
+		Description: "list_routines'ten alınan gerçek id ile bir rutini siler.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"id":{"type":"string","description":"Rutin id"}},"required":["id"]}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.DeleteRoutine,
 	})
@@ -379,8 +379,8 @@ func (r *ToolRegistry) registerRoutineTool() {
 func (r *ToolRegistry) registerWebSearchTool() {
 	r.Register(ToolDef{
 		Name:        "web_search",
-		Description: "Searches the web (DuckDuckGo) and returns relevant results. Only call this for current events, recent news, prices, or specific facts that may have changed after your training cutoff. Do NOT call it for greetings, small talk, general knowledge you already know, or coding/file/project questions — answer those directly instead. This tool answers information requests in place — it never opens a browser window; use open_app only for an explicit \"launch/open the browser\" command with no actual question attached.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"query":{"type":"string","description":"Short keyword-style search query (2-6 words) — extract the subject, do NOT pass the user's raw message verbatim"},"max_results":{"type":"integer","description":"Number of results to return (default 5, max 10)"}},"required":["query"]}`),
+		Description: "Searches the web (DuckDuckGo) for recent news, prices, or current facts. Do not call for greetings, general knowledge, or code questions, and do not use open_app for search requests.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"query":{"type":"string","description":"Short keyword query (2-6 words)"},"max_results":{"type":"integer","description":"Number of results (default 5, max 10)"}},"required":["query"]}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.WebSearch,
 	})
@@ -392,8 +392,8 @@ func (r *ToolRegistry) registerWebSearchTool() {
 func (r *ToolRegistry) registerFetchPageTool() {
 	r.Register(ToolDef{
 		Name:        "fetch_page",
-		Description: "Fetches the full readable content of a URL as Markdown (headings, lists, code blocks, links preserved) — a search result's snippet is a short teaser, not the actual page. Use this after web_search to actually read a promising result, or directly when the user already gave you a URL — including a plain \"read/summarize this page\" or \"what does this site say\" request. This is the right tool for that, NOT browser_navigate: fetch_page is fast, lightweight, and exactly what reading content means. Only reach for browser_navigate (and its click/type/scroll siblings) when the user needs you to actually interact with the live page — click something, fill a form, test a button — or visually verify a UI, not just read what's on it. Judge relevance yourself from what comes back: if the content doesn't actually match what you're looking for, call this again with a different search result's URL instead of answering from an irrelevant page. You get up to 5 attempts at DIFFERENT domains per request — fetching another page on a domain you already tried (pagination, a different page of the same docs site) is free and does not count against that limit. If the budget runs out, tell the user you could not find a relevant source instead of guessing.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"url":{"type":"string","description":"The exact URL to fetch — from a web_search result, or given directly by the user"}},"required":["url"]}`),
+		Description: "Fetches a URL's readable content as Markdown (use after web_search or for read/summarize requests, instead of browser_navigate). Up to 5 domains per request; retrying another URL on the same domain is free.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"url":{"type":"string","description":"Exact URL to fetch"}},"required":["url"]}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.FetchPage,
 	})
@@ -410,8 +410,8 @@ func (r *ToolRegistry) registerOpenAppTool() {
 	r.Register(ToolDef{
 		Name:        "open_app",
 		Beta:        true,
-		Description: "Launches a desktop application, or the default browser with a blank tab, on the user's computer (Windows, macOS, or Linux). Call this ONLY for an explicit launch/open command naming an application — e.g. \"Spotify'ı aç\", \"Steam'i başlat\", \"tarayıcıyı aç\", \"open VS Code\". Do NOT call this for a question, a search, or any information request, even if it mentions a browser or an app by name — \"en son haberler ne\", \"X hakkında bilgi ver\", \"YouTube'da ne var\" are answered with web_search or directly, never by opening anything. This tool only starts the program — it cannot search inside it, open a specific site, play a specific song, or answer any question.",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"app_name":{"type":"string","description":"Just the application's name (e.g. \"Spotify\", \"Steam\", \"tarayıcı\"/\"browser\", \"Discord\", \"VS Code\") — extract it, do NOT pass the user's raw sentence"}},"required":["app_name"]}`),
+		Description: "Launches a desktop application or blank browser tab ONLY on an explicit open/launch command (never for questions or searches).",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"app_name":{"type":"string","description":"Application name (e.g. Spotify, browser, VS Code)"}},"required":["app_name"]}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.OpenApp,
 	})
@@ -439,7 +439,7 @@ func (r *ToolRegistry) registerBrowserTools() {
 	r.Register(ToolDef{
 		Name:        "browser_navigate",
 		Beta:        true,
-		Description: "Opens a URL in Memo's own sandboxed, interactive browser session (a dedicated, disposable Chromium process — never the user's real browser or accounts) so you can click/type/scroll through and test a live page, e.g. a site you just built. Do NOT use this for a plain \"read/summarize this page\" or \"what does this site say\" request — that's fetch_page (much faster, no browser launch); reach for this tool only when the task genuinely needs interaction (click a button, fill a form, verify something visually) or the user explicitly asks you to open/use a browser. Starts a session on first use; a later call reuses it, loading a new URL in the same tab. Does not return a screenshot or the page's content itself — call browser_get_text next to see what's on the page and get real selectors for anything you need to click, or browser_screenshot to show the user (not yourself) what it looks like.",
+		Description: "Opens a URL in Memo's disposable sandboxed Chromium session for interactive testing (use fetch_page just to read text). Follow with browser_get_text for selectors or browser_screenshot to display to the user.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"url":{"type":"string","description":"The URL to open"}},"required":["url"]}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.BrowserNavigate,
@@ -447,31 +447,31 @@ func (r *ToolRegistry) registerBrowserTools() {
 	r.Register(ToolDef{
 		Name:        "browser_click",
 		Beta:        true,
-		Description: "Clicks an element in the active interactive browser session — either by CSS selector, or by exact viewport coordinates if there's no stable selector to target (e.g. canvas content). Provide exactly one of selector or (x and y). Do NOT guess a selector from a screenshot or assumed markup — call browser_get_text first, which lists every clickable element with a selector GUARANTEED to hit it; use that exact string. Requires an existing session (call browser_navigate first).",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"selector":{"type":"string","description":"CSS selector of the element to click"},"x":{"type":"number","description":"Viewport x coordinate (use together with y instead of selector)"},"y":{"type":"number","description":"Viewport y coordinate (use together with x instead of selector)"}}}`),
+		Description: "Clicks an element in the active browser session by CSS selector (from browser_get_text; never guess) or viewport (x, y).",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"selector":{"type":"string","description":"CSS selector"},"x":{"type":"number","description":"Viewport x"},"y":{"type":"number","description":"Viewport y"}}}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.BrowserClick,
 	})
 	r.Register(ToolDef{
 		Name:        "browser_type",
 		Beta:        true,
-		Description: "Focuses an element by CSS selector in the active interactive browser session and types text into it as real key events (triggers the page's own input handlers, not just a value assignment). Requires an existing session (call browser_navigate first).",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"selector":{"type":"string","description":"CSS selector of the input/textarea/editable element"},"text":{"type":"string","description":"The text to type"}},"required":["selector","text"]}`),
+		Description: "Focuses a CSS selector in the active browser session and types text via key events.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"selector":{"type":"string","description":"CSS selector"},"text":{"type":"string","description":"Text to type"}},"required":["selector","text"]}`),
 		DangerLevel: Medium,
 		ExecuteFn:   tools.BrowserType,
 	})
 	r.Register(ToolDef{
 		Name:        "browser_scroll",
 		Beta:        true,
-		Description: "Scrolls the page in the active interactive browser session by (dx, dy) pixels from its current position. Omitting both scrolls down a bit by default. Requires an existing session (call browser_navigate first).",
-		Parameters:  json.RawMessage(`{"type":"object","properties":{"dx":{"type":"integer","description":"Horizontal scroll in pixels (default 0)"},"dy":{"type":"integer","description":"Vertical scroll in pixels (default 800 if both dx and dy are omitted)"}}}`),
+		Description: "Scrolls the active browser session by (dx, dy) pixels (default dy=800).",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"dx":{"type":"integer","description":"Horizontal px"},"dy":{"type":"integer","description":"Vertical px"}}}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.BrowserScroll,
 	})
 	r.Register(ToolDef{
 		Name:        "browser_screenshot",
 		Beta:        true,
-		Description: "Captures the current page of the active interactive browser session and shows it to the USER in a live pane — call it after navigate/click/type/scroll so the user can watch along. You yourself do NOT receive the image (no visual/multimodal channel is wired up) — call browser_get_text if you need to know what's actually on the page. Returns an error if no session is currently open.",
+		Description: "Shows the active browser page screenshot to the user (you do not see the image; use browser_get_text to read the page).",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.BrowserScreenshot,
@@ -479,7 +479,7 @@ func (r *ToolRegistry) registerBrowserTools() {
 	r.Register(ToolDef{
 		Name:        "browser_get_text",
 		Beta:        true,
-		Description: "Reads the active interactive browser session's page: its visible text, AND a list of every clickable element (links, buttons, inputs) with a ready-to-use CSS selector for each. Since you cannot see screenshots yourself, this is your real way to know what's on a page and what you can act on — call this right after browser_navigate, before trying to click or type anything, and reuse the exact selector strings it gives you (do not write your own guesses like '#submit' or 'button.primary' — they usually don't match the real page and will fail). Call it again after a click/navigate if the page changed.",
+		Description: "Reads the active browser page's visible text and clickable elements with exact CSS selectors.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.BrowserGetText,
@@ -487,7 +487,7 @@ func (r *ToolRegistry) registerBrowserTools() {
 	r.Register(ToolDef{
 		Name:        "browser_close",
 		Beta:        true,
-		Description: "Closes the active interactive browser session, if one is open. Call this once you're done testing a page — a forgotten session closes itself automatically after a few minutes of inactivity, but closing it explicitly frees the resources sooner.",
+		Description: "Closes the active interactive browser session.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{}}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.BrowserClose,

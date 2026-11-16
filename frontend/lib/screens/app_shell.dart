@@ -294,6 +294,7 @@ class _AppShellState extends ConsumerState<AppShell> {
         // that started before the gate opened kept showing it off forever.
         // Invalidating recreates the notifier and re-runs its init GET.
         ref.invalidate(agentEnabledProvider);
+        ref.invalidate(onDemandToolsProvider);
         ref.invalidate(webSearchModeProvider);
         // Same shape as agentEnabledProvider/webSearchModeProvider just
         // above (a StateNotifier that GETs its value once at construction,

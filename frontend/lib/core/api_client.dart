@@ -2520,6 +2520,17 @@ class MemoApiClient {
     await _dio.put('/api/agent/enabled', data: {'enabled': enabled});
   }
 
+  /// Get on-demand tool loading status.
+  Future<bool> getOnDemandTools() async {
+    final res = await _dio.get('/api/agent/on-demand-tools');
+    return res.data['enabled'] as bool? ?? true;
+  }
+
+  /// Set on-demand tool loading status.
+  Future<void> setOnDemandTools(bool enabled) async {
+    await _dio.put('/api/agent/on-demand-tools', data: {'enabled': enabled});
+  }
+
   /// Send permission response.
   Future<void> handleAgentPermission(String requestId, String policy) async {
     await _dio.post(

@@ -389,6 +389,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/projects/permissions/save", s.requirePermission(s.handleProjectPermissionsSave, hasAgentPerm))
 	route("/api/projects/permissions/trust", s.requirePermission(s.handleProjectPermissionsTrust, hasAgentPerm))
 	route("/api/agent/enabled", s.requirePermission(s.handleAgentEnabled, hasAgentPerm))
+	route("/api/agent/on-demand-tools", s.requirePermission(s.handleAgentOnDemandTools, hasAgentPerm))
 	route("/api/agent/permission", s.handleAgentPermission)
 	route("/api/agent/permissions", s.requirePermission(s.handleAgentPermissions, hasAgentPerm))
 	route("/api/agent/auto-permission", s.requirePermission(s.handleAgentAutoPermission, hasAgentPerm))

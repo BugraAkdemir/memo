@@ -2642,6 +2642,38 @@ func (s *Server) handleAgentEnabled(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type onDemandToolsBridge interface {
+	GetOnDemandTools() bool
+	SetOnDemandTools(bool) error
+}
+
+func (s *Server) handleAgentOnDemandTools(w http.ResponseWriter, r *http.Request) {
+	b, ok := s.fullBridge.(onDemandToolsBridge)
+	if !ok {
+		http.Error(w, "bridge not available", http.StatusServiceUnavailable)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, map[string]bool{"enabled": b.GetOnDemandTools()})
+	case http.MethodPut:
+		var req struct {
+			Enabled bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := b.SetOnDemandTools(req.Enabled); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]bool{"ok": true})
+	default:
+		http.Error(w, "GET or PUT", http.StatusMethodNotAllowed)
+	}
+}
+
 func (s *Server) handleAgentPermission(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost || s.fullBridge == nil {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)

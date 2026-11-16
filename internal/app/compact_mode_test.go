@@ -170,18 +170,56 @@ func TestBuildMessagesForSession_CompactAgentTurnBudgetsLoadToolsNotTheFullSchem
 	}
 }
 
-func TestBuildMessagesForSession_LargeWindowAgentTurnKeepsFullSchema(t *testing.T) {
+func TestBuildMessagesForSession_LargeWindowAgentTurnUsesOnDemandWhenEnabledAndFullWhenOff(t *testing.T) {
+	a, _, chatID := newCompactTestApp(t)
+	a.cfg.AgentMode.OnDemandTools = true
+	a.agentEnabled = true
+	a.agentExecutor = agent.NewExecutor(t.TempDir(), nil, nil, nil)
+
+	// Default (OnDemandTools = true): 32k keeps compact=false (full prompt,
+	// full memory, no compact reply cap), yet sends only load_tools (~350 tok)
+	// instead of the full multi-thousand-token registry.
+	a.buildMessagesForSession(localRouteCtx(32768), chatID, "dosyaları listele", nil, nil)
+	a.ctxState.mu.Lock()
+	onDemandSnap := a.ctxState.snaps[chatID]
+	a.ctxState.mu.Unlock()
+	full := a.agentToolTokens(chatID)
+	if onDemandSnap.compact {
+		t.Errorf("32k window with OnDemandTools=true set compact=true, want false")
+	}
+	if onDemandSnap.tools <= 0 || onDemandSnap.tools >= full {
+		t.Errorf("32k on-demand tools=%d, want >0 and strictly less than full %d", onDemandSnap.tools, full)
+	}
+	t.Logf("32k agent tool tokens: full_filtered=%d, on_demand=%d", full, onDemandSnap.tools)
+
+	// When OnDemandTools is turned off, 32k sends the full filtered schema.
+	a.cfg.AgentMode.OnDemandTools = false
+	a.buildMessagesForSession(localRouteCtx(32768), chatID, "dosyaları listele", nil, nil)
+	a.ctxState.mu.Lock()
+	fullSnap := a.ctxState.snaps[chatID]
+	a.ctxState.mu.Unlock()
+	if fullSnap.compact || fullSnap.tools != full {
+		t.Errorf("32k window with OnDemandTools=false: compact=%v tools=%d, want false and %d", fullSnap.compact, fullSnap.tools, full)
+	}
+}
+
+func TestExcludedAgentTools_HidesDisconnectedIntegrations(t *testing.T) {
 	a, _, chatID := newCompactTestApp(t)
 	a.agentEnabled = true
 	a.agentExecutor = agent.NewExecutor(t.TempDir(), nil, nil, nil)
 
-	a.buildMessagesForSession(localRouteCtx(32768), chatID, "dosyaları listele", nil, nil)
-
-	a.ctxState.mu.Lock()
-	snap := a.ctxState.snaps[chatID]
-	a.ctxState.mu.Unlock()
-	if snap.compact || snap.tools != a.agentToolTokens(chatID) {
-		t.Errorf("32k window: compact=%v tools=%d, want false and the full %d", snap.compact, snap.tools, a.agentToolTokens(chatID))
+	defs := a.agentToolDefs(context.Background(), chatID)
+	names := make(map[string]bool, len(defs))
+	for _, d := range defs {
+		names[d.Function.Name] = true
+	}
+	for _, disconnected := range []string{"mail_send", "mail_accounts", "whatsapp_send", "telegram_send", "twin_contacts"} {
+		if names[disconnected] {
+			t.Errorf("fresh app without connected services should exclude %q", disconnected)
+		}
+	}
+	if !names["read_file"] {
+		t.Errorf("core tool read_file should remain present in agentToolDefs")
 	}
 }
 

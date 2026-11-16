@@ -150,3 +150,54 @@ func TestRegularRun_HasNoLoadTools(t *testing.T) {
 		t.Fatalf("a regular run offered %v; want the full list and no %s", prov.offered[0], LoadToolsName)
 	}
 }
+
+func TestOnDemandTools_LoadsExtendedGroupsAndPrunesUnavailable(t *testing.T) {
+	c := NewOnDemandTools(nil, nil)
+	base := NewRegistry().ToOpenAITools(nil) // lacks browser_* (Beta) and sys_* (OS)
+	def := c.LoadToolsDefinitionFor(base)
+	desc := def.Function.Description
+	for _, absent := range []string{"browser", "os"} {
+		if strings.Contains(desc, absent+" =") {
+			t.Errorf("LoadToolsDefinitionFor should omit empty group %q from description: %s", absent, desc)
+		}
+	}
+	for _, present := range []string{"files_read", "subagents", "tasks", "skills", "system"} {
+		if !strings.Contains(desc, present+" =") {
+			t.Errorf("LoadToolsDefinitionFor should include group %q in description: %s", present, desc)
+		}
+	}
+
+	got := c.Load([]byte(`{"groups":["skills","tasks"]}`), base, nil)
+	if !strings.Contains(got, "Loaded skills:") || !strings.Contains(got, "tasks:") {
+		t.Fatalf("Load(extended) = %q, want Loaded skills and tasks", got)
+	}
+	filtered := c.Filter(base, nil)
+	var names []string
+	for _, d := range filtered {
+		names = append(names, d.Function.Name)
+	}
+	if !hasName(names, "use_skill") || !hasName(names, "create_task_md") {
+		t.Fatalf("extended groups missing from filtered tools: %v", names)
+	}
+}
+
+func TestPipeline_ExcludedToolsHiddenEvenWithoutCompact(t *testing.T) {
+	prov := &toolRecordingProvider{responses: []provider.ChatResponse{{Content: "ok"}}}
+	p := NewPipeline(NewRegistry(), NewPermissionManager(t.TempDir()), NewSandbox(DefaultSandboxConfig(t.TempDir())), prov, NewBackupManager(t.TempDir()))
+	p.autoPermission = true
+	p.excludedTools = map[string]bool{"mail_send": true, "mail_accounts": true, "whatsapp_send": true}
+	ch, err := p.RunStream(context.Background(), nil, "test-model", func(AgentEvent) {}, nil)
+	if err != nil {
+		t.Fatalf("RunStream() error = %v", err)
+	}
+	for chunk := range ch {
+		if chunk.Error != "" {
+			t.Fatalf("unexpected error: %s", chunk.Error)
+		}
+	}
+	for _, forbidden := range []string{"mail_send", "mail_accounts", "whatsapp_send"} {
+		if hasName(prov.offered[0], forbidden) {
+			t.Errorf("excluded tool %q was still advertised", forbidden)
+		}
+	}
+}

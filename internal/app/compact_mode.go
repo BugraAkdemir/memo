@@ -94,14 +94,40 @@ func (a *App) compactTurnWindow(ctx context.Context) int {
 	return 0
 }
 
+// onDemandToolsActive reports whether an interactive agent turn should expose
+// only load_tools initially and load groups on demand: always on compact small
+// windows (< compactWindowLimit), and on larger windows when
+// AgentMode.OnDemandTools is enabled. Task-loop runs are exempt.
+func (a *App) onDemandToolsActive(ctx context.Context) bool {
+	if !a.GetAgentEnabled() || agent.HasToolScope(ctx) {
+		return false
+	}
+	if a.compactTurnWindow(ctx) > 0 {
+		return true
+	}
+	if taskRunConfigFromCtx(ctx) != nil {
+		return false
+	}
+	a.cfgMu.RLock()
+	enabled := a.cfg != nil && a.cfg.AgentMode.OnDemandTools
+	a.cfgMu.RUnlock()
+	return enabled
+}
+
 // compactToolsFor is the on-demand tool state for chatID's agent turn, or nil
-// when the turn is not compact. Groups loaded in earlier turns stay loaded.
+// when the turn sends the full filtered registry. Groups loaded in earlier
+// turns stay loaded.
 func (a *App) compactToolsFor(ctx context.Context, chatID string) *agent.CompactTools {
 	window := a.compactTurnWindow(ctx)
-	if window == 0 {
+	if window > 0 {
+		return agent.NewCompactTools(compactToolShare(window), a.compactGroups.get(chatID), func(g string) {
+			a.compactGroups.add(chatID, g)
+		})
+	}
+	if !a.onDemandToolsActive(ctx) {
 		return nil
 	}
-	return agent.NewCompactTools(compactToolShare(window), a.compactGroups.get(chatID), func(g string) {
+	return agent.NewOnDemandTools(a.compactGroups.get(chatID), func(g string) {
 		a.compactGroups.add(chatID, g)
 	})
 }
@@ -147,15 +173,12 @@ func (a *App) compactAgentToolTokens(ctx context.Context, chatID string) int {
 	if !a.GetAgentEnabled() || a.agentExecutor == nil {
 		return 0
 	}
+	defs := a.agentToolDefs(ctx, chatID)
 	c := a.compactToolsFor(ctx, chatID)
 	if c == nil {
-		return a.agentToolTokens(chatID)
+		return agent.DefinitionTokens(defs)
 	}
 	reg := a.agentExecutor.Registry()
-	defs := reg.ToOpenAITools(a.activeSkillSet(chatID))
-	if a.resolveCodeMode(chatID) {
-		defs = agent.ForCodeMode(defs)
-	}
 	return agent.DefinitionTokens(c.Filter(defs, func(d provider.ToolDefinition) bool {
 		td, ok := reg.Get(d.Function.Name)
 		return ok && td.SkillOwner != ""

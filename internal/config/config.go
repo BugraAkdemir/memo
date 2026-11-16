@@ -345,7 +345,8 @@ type AgentModeConfig struct {
 	// SubAgentMaxParallel limits normal-chat asynchronous children, independent of task-loop steps.
 	SubAgentMaxParallel int `yaml:"subagent_max_parallel" json:"subagent_max_parallel"`
 
-	Enabled bool `yaml:"enabled" json:"enabled"`
+	Enabled       bool `yaml:"enabled" json:"enabled"`
+	OnDemandTools bool `yaml:"on_demand_tools" json:"on_demand_tools"`
 
 	// WorkingSetEnabled keeps a per-chat digest of the files and commands an
 	// agent turn has already touched this session and injects it (compactly)
@@ -1141,6 +1142,7 @@ func Default() *AppConfig {
 			// WhatsApp. Existing installs that explicitly turned it off in
 			// Settings keep their saved config.yaml value on Load().
 			Enabled:                    true,
+			OnDemandTools:              true,
 			WorkingSetEnabled:          true,
 			WorkingSetMaxTokens:        600,
 			ConversationCompactEnabled: true,

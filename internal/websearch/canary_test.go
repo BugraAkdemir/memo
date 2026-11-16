@@ -4,19 +4,27 @@ package websearch
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
+
+	"github.com/BugraAkdemir/gosearch"
 )
 
 // TestCanary_Search gerçek DuckDuckGo aramasına çıkar ve Search'ün hâlâ
 // en az bir sonuç döndürdüğünü doğrular. gosearch'ün HTML parser'ı
-// kırılırsa (motor markup değiştirirse) bu test patlar.
+// kırılırsa (motor markup değiştirirse) bu test patlar. Paylaşımlı CI runner
+// IP'lerinden gelen isteklerde DuckDuckGo bot/captcha koruması (ErrChallenge /
+// ErrBlocked) dönerse bu bir parser kırılması olmadığından test skip edilir.
 func TestCanary_Search(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	results, err := Search(ctx, "golang", 5)
 	if err != nil {
+		if errors.Is(err, gosearch.ErrChallenge) || errors.Is(err, gosearch.ErrBlocked) {
+			t.Skipf("skipping canary on shared runner IP challenge/block: %v", err)
+		}
 		t.Fatalf("Search failed: %v", err)
 	}
 	if len(results) == 0 {
@@ -30,27 +38,6 @@ func TestCanary_Search(t *testing.T) {
 		}
 	}
 	t.Fatalf("no result with both Title and URL set: %+v", results)
-}
-
-// TestCanary_SearchSuperLig is a one-off, not a permanent regression test:
-// reproduces the exact live-reported search-quality issue this session
-// found with Bing (queries like this returned unrelated results — Süper
-// Loto, Windows help forums, random-language pages — depending on exact
-// wording) to confirm DuckDuckGo actually returns on-topic results for it.
-func TestCanary_SearchSuperLig(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	results, err := Search(ctx, "Süper Lig 2026 2027 2. hafta maç sonuçları skorları", 8)
-	if err != nil {
-		t.Fatalf("Search failed: %v", err)
-	}
-	if len(results) == 0 {
-		t.Fatal("Search returned zero results")
-	}
-	for i, r := range results {
-		t.Logf("[%d] %s — %s", i+1, r.Title, r.URL)
-	}
 }
 
 // TestCanary_Fetch gerçek bir sayfaya çıkar ve Fetch'in okunabilir içerik

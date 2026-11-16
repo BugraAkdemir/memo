@@ -48,7 +48,7 @@
 </div>
 
 > [!NOTE]
-> **v5.0.0 is out** (November 7, 2026). Read the [release notes](versinNote/v5.0.0.md) or jump to [what's new](#whats-new-in-v50).
+> **v5.1.0 is out** (November 17, 2026). Read the [release notes](versinNote/v5.1.0.md) or jump to [what's new](#whats-new-in-v50).
 
 ---
 
@@ -143,7 +143,7 @@ Hand work to background sub-agents; call a skill by name with <code>/skill</code
 
 **⚡ Faster local models**<br/>
 Engine chosen by the GPU Memo really sees, Vulkan prompt processing, n-gram speculative decoding (Linux).<br/>
-<sub><a href="versinNote/v5.0.0.md">Notes →</a></sub>
+<sub><a href="versinNote/v5.1.0.md">Notes →</a></sub>
 
 </td>
 </tr>
@@ -336,7 +336,7 @@ flowchart TD
 
 **🏪 A curated model store.** Memo detects your GPU and RAM and tags every download with a **hardware-fit badge** ("Fits your device", "Runs (CPU)", "Too large"). Plain-language quality labels replace quant codes, with capability filters and a one-click Start that configures GPU offloading.
 
-**⚡ Local models, faster.** Memo asks each bundled engine which GPUs it sees and picks accordingly. With a Vulkan driver, prompt processing was about **2.2× faster** in our test, and code-heavy replies up to **3× faster** with n-gram speculative decoding. Measured on one model and one machine; Linux for now ([details](versinNote/v5.0.0.md)).
+**⚡ Local models, faster.** Memo asks each bundled engine which GPUs it sees and picks accordingly. With a Vulkan driver, prompt processing was about **2.2× faster** in our test, and code-heavy replies up to **3× faster** with n-gram speculative decoding. Measured on one model and one machine; Linux for now ([details](versinNote/v5.1.0.md)).
 
 </td>
 <td align="center" width="38%">
@@ -503,7 +503,7 @@ flowchart TB
 | ✨ [Features catalog](docs/FEATURES.md) · [UI features](docs/UI_FEATURES.md) | 🔌 [API reference](docs/API_REFERENCE.md) |
 | ✉️ [Mail & Digital Twin](docs/DIGITAL_TWIN_AND_MAIL.md) · [Setup wizard](docs/SETUP_WIZARD.md) | 🔒 [Mail security](docs/MAIL_SECURITY.md) · [Telemetry](docs/TELEMETRY.md) |
 | 📁 [Project folders](docs/PROJECT_FOLDER.md) · [Sub-agents](docs/CHAT_SUBAGENTS.md) | 🔄 [Auto-update](docs/AUTO_UPDATE.md) · [Self-hosting](docs/SELF_HOSTED.md) |
-| 🛣 [Roadmap](docs/ROADMAP.md) · [Known issues](docs/KNOWN_ISSUES.md) | 🎨 [Design system](frontend/DESIGN.md) · [Release notes](versinNote/v5.0.0.md) |
+| 🛣 [Roadmap](docs/ROADMAP.md) · [Known issues](docs/KNOWN_ISSUES.md) | 🎨 [Design system](frontend/DESIGN.md) · [Release notes](versinNote/v5.1.0.md) |
 
 Prefer a browsable knowledge base? Open **`obsidian-doc-en/Memo`** (English) or **`obsidian-doc/Memo`** (Türkçe) as an [Obsidian](https://obsidian.md) vault. Full guide: [memocpp.com/guide](https://memocpp.com/guide).
 

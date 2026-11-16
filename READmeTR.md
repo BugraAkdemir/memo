@@ -48,7 +48,7 @@
 </div>
 
 > [!NOTE]
-> **v5.0.0 yayında** (7 Kasım 2026). [Sürüm notlarını](versinNote/tr/v5.0.0.md) oku ya da [yeniliklere](#yenilikler) geç.
+> **v5.1.0 yayında** (17 Kasım 2026). [Sürüm notlarını](versinNote/tr/v5.1.0.md) oku ya da [yeniliklere](#yenilikler) geç.
 
 ---
 
@@ -144,7 +144,7 @@ Bir klasör aç; kendi kurallarını ve kendi hafızasını alır, kişisel haf�
 
 **⚡ Daha hızlı yerel modeller**<br/>
 Memo'nun gerçekten gördüğü GPU'ya göre motor seçimi, Vulkan istem işleme, n-gram spekülatif çözümleme (Linux).<br/>
-<sub><a href="versinNote/tr/v5.0.0.md">Notlar →</a></sub>
+<sub><a href="versinNote/tr/v5.1.0.md">Notlar →</a></sub>
 
 </td>
 </tr>
@@ -342,7 +342,7 @@ flowchart TD
 
 **🏪 Özenle seçilmiş model mağazası.** Memo GPU'nu ve RAM'ini algılar, her indirmeyi bir **donanım uyum rozetiyle** etiketler ("Cihazına uyuyor", "Çalışır (CPU)", "Çok büyük"). Quant kodları yerine sade kalite etiketleri, yetenek filtreleri ve GPU yüklemesini ayarlayan tek tıkla başlatma.
 
-**⚡ Yerel modeller, daha hızlı.** Memo gömülü her motora hangi GPU'ları gördüğünü sorar ve ona göre seçer. Vulkan sürücüsüyle istem işleme testimizde yaklaşık **2,2× hızlandı**, kod ağırlıklı yanıtlar n-gram spekülatif çözümlemeyle **3×'e kadar**. Tek model ve tek makinede ölçüldü; şimdilik Linux ([ayrıntı](versinNote/tr/v5.0.0.md)).
+**⚡ Yerel modeller, daha hızlı.** Memo gömülü her motora hangi GPU'ları gördüğünü sorar ve ona göre seçer. Vulkan sürücüsüyle istem işleme testimizde yaklaşık **2,2× hızlandı**, kod ağırlıklı yanıtlar n-gram spekülatif çözümlemeyle **3×'e kadar**. Tek model ve tek makinede ölçüldü; şimdilik Linux ([ayrıntı](versinNote/tr/v5.1.0.md)).
 
 </td>
 <td align="center" width="38%">
@@ -513,7 +513,7 @@ flowchart TB
 | ✨ [Özellik kataloğu](docs/tr/FEATURES.md) · [Arayüz özellikleri](docs/UI_FEATURES.md) | 🔌 [API referansı](docs/tr/API_REFERENCE.md) |
 | ✉️ [Mail ve Dijital İkiz](docs/DIGITAL_TWIN_AND_MAIL.md) · [Kurulum sihirbazı](docs/SETUP_WIZARD.md) | 🔒 [Mail güvenliği](docs/MAIL_SECURITY.md) · [Telemetri](docs/TELEMETRY.md) |
 | 📁 [Proje klasörleri](docs/tr/PROJECT_FOLDER.md) · [Alt ajanlar](docs/CHAT_SUBAGENTS.md) | 🔄 [Otomatik güncelleme](docs/tr/AUTO_UPDATE.md) · [Kendi sunucunda barındırma](docs/tr/SELF_HOSTED.md) |
-| 🛣 [Yol haritası](docs/tr/ROADMAP.md) · [Bilinen sorunlar](docs/tr/BILINEN_SORUNLAR.md) | 🎨 [Tasarım sistemi](frontend/DESIGN.md) · [Sürüm notları](versinNote/tr/v5.0.0.md) |
+| 🛣 [Yol haritası](docs/tr/ROADMAP.md) · [Bilinen sorunlar](docs/tr/BILINEN_SORUNLAR.md) | 🎨 [Tasarım sistemi](frontend/DESIGN.md) · [Sürüm notları](versinNote/tr/v5.1.0.md) |
 
 Gezilebilir bir bilgi tabanı mı istiyorsun? **`obsidian-doc/Memo`** (Türkçe) ya da **`obsidian-doc-en/Memo`** (English) klasörünü bir [Obsidian](https://obsidian.md) kasası olarak aç. Tam kılavuz: [memocpp.com/tr/guide](https://memocpp.com/tr/guide).
 

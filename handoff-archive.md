@@ -1,3 +1,16 @@
+# Son oturum — 16 Kasım — Varsayılan açık Agent/Web, çalışma dizini ayrımı ve global skill kurulumu
+- **Varsayılan Agent + Web Araması açık & Ayarlar'a taşıma (`30cd66fc`, `476440bb`)**:
+  - `internal/config/config.go` (`AgentMode.Enabled: true`), `frontend/lib/providers/{agent_provider.dart,chat_provider.dart}` (`super(true)`, `switchTo` içindeki gizli `setEnabled(false)` kaldırıldı), `ChatTopBar` & mobil menüden Agent/Web düğmeleri kaldırılıp `GeneralTab` → Özellikler bölümüne taşındı; `communication_tool_names_test.dart`, `chat_top_bar_test.dart` ve `new_chat_landing_test.dart` güncellendi.
+- **`WorkingDir` / `ProjectPath` ayrımı & `~/MemoWorkspace` (`9dc2c4b0`)**:
+  - `internal/sessions/sessions.go` (`WorkingDir`, `GetWorkingDir`/`SetWorkingDir`), `internal/app/workspace.go` (`defaultWorkspaceDir` → normalde `~/MemoWorkspace`, `os.TempDir()` altındaki testlerde `<DataDir>/workspace`), `internal/agent/tools/changedir.go` (`WorkingDirSetter`, `create_if_missing`): klasör değişikliği artık proje sohbetine veya dar hafıza kapsamına dönüştürmüyor.
+- **Global GitHub/`npx skills add` skill kurulumu ve Telegram/WhatsApp uyumluluğu (`e791bec8`)**:
+  - `internal/project/skills.go` (`InstallSkillToDir` + `MarkInstructionsOnly`), `internal/skill/{loader.go,manager.go}` (`.instructions-only` araç soyutlama + `RegisterDir`), `internal/app/{project_skills.go,skill.go,chat.go}`, `internal/agent/tools.go`: proje dışı sohbetlerde (normal, Telegram, WhatsApp) `install_project_skill` ve `/skill add` artık `data/skills/<name>` altına kurup hemen `use_skill` / `/skill:on` ile kullanıma açıyor; `SendMessageStreamTo` & `SendMessageStreamToAsAgent` `/skill` komutlarını doğrudan işliyor.
+- **Doğrulama**:
+  - `CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...`, `go vet -tags "sqlite_fts5" ./...` PASS; hedefli `-race` paketleri (`sessions`, `agent`, `agent/tools`, `project`, `skill`, `app` ve `e2e` ilgili testleri) PASS; tam `go test -tags "sqlite_fts5" ./... -race` koşusunda yalnız önceden bilinen 4 test + `internal/updater` (`scripts/rust-ai-slides/node_modules`) düştü.
+  - `flutter analyze lib/` (0 hata/uyarı, 3 pre-existing info), `flutter test` (`+1050 ~1`, 0 hata) ve L10n grep kontrolü (`L10N_CLEAN`) PASS.
+
+---
+
 # Son oturum — 15 Kasım — Flutter arayüz sadeleştirme, yetenek bazlı giriş düğmeleri ve model adı gösterimi
 - **Giriş çubuğu (`ChatInput`, `frontend/lib/widgets/chat_input.dart`)**:
   - `frontend/lib/models/model_capabilities.dart` (`ModelInputCapabilities`, `resolveModelInputCapabilities`) ve `frontend/lib/providers/models_provider.dart` (`modelStatusOnceProvider`, polling `Timer` olmadan tek seferlik kontrol) eklendi.

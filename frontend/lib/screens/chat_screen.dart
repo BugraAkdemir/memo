@@ -216,7 +216,10 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
         Expanded(
           child: landing
               ? NewChatLanding(chat: activeChat, composer: composer)
-              : messagesAsync.when(
+              : Column(
+                  children: [
+                    Expanded(
+                      child: messagesAsync.when(
             loading: () =>  Center(
               child: CircularProgressIndicator(color: MemoTheme.accent),
             ),
@@ -311,14 +314,15 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
               );
             },
           ),
+                    ),
+                    // Quota notice (allowance ran out / running low) — only when there is one.
+                    const QuotaNoticeCard(),
+                    if (activeId != null) SubagentTray(chatId: activeId),
+                    // ─── Input ────────────────────────────────
+                    composer,
+                  ],
+                ),
         ),
-
-        // Quota notice (allowance ran out / running low) — only when there is one.
-        const QuotaNoticeCard(),
-        if (activeId != null) SubagentTray(chatId: activeId),
-
-        // ─── Input ────────────────────────────────
-        if (!landing) composer,
       ],
     );
   }

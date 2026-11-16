@@ -272,4 +272,25 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('returning from active chat to empty landing does not throw GlobalKey element assertion', (tester) async {
+    await pump(tester);
+    await tester.tap(field());
+    await tester.pump();
+    await tester.enterText(field(), 'merhaba');
+    await tester.pump();
+    final before = tester.state<EditableTextState>(find.descendant(of: field(), matching: find.byType(EditableText)));
+
+    (container.read(messagesProvider.notifier) as _Messages)
+        .put([ChatMessage(role: 'user', content: 'merhaba', timestamp: '12:00')]);
+    await tester.pumpAndSettle();
+    expect(chatSeg(), findsNothing);
+
+    (container.read(messagesProvider.notifier) as _Messages).put(const []);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(chatSeg(), findsOneWidget);
+    final after = tester.state<EditableTextState>(find.descendant(of: field(), matching: find.byType(EditableText)));
+    expect(identical(before, after), isTrue);
+  });
 }

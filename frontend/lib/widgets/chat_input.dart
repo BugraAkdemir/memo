@@ -1486,7 +1486,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                       await api.updateOrchestraConfig(current.copyWith(enabled: true));
                       ref.invalidate(orchestraConfigProvider);
                     } catch (e) {
-                      if (mounted) {
+                      if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(L10n.t('orchestra_enable_failed', {'e': FriendlyError.describeGeneric(e)})),

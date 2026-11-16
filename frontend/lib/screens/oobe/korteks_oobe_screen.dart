@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/l10n.dart';
 import '../../core/theme.dart';
 
 /// Configuration payload emitted when the user completes the KorteksOS
@@ -62,12 +63,12 @@ class _KorteksOobeScreenState extends State<KorteksOobeScreen> {
   bool _submitting = false;
   String? _error;
 
-  static const _stepTitles = [
-    'Donanım & APU Boost',
-    'Yerel AI & Sağlayıcı',
-    '3-Ring Yetki & Btrfs',
-    'Distrobox Geliştirici Stack',
-    'Sesli HUD & Tamamlama',
+  static const _stepTitleKeys = [
+    'oobe_step_hardware',
+    'oobe_step_model',
+    'oobe_step_ring',
+    'oobe_step_distrobox',
+    'oobe_step_voice',
   ];
 
   static const _availableStacks = <String, String>{
@@ -101,7 +102,7 @@ class _KorteksOobeScreenState extends State<KorteksOobeScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'Kurulum kaydedilemedi: $e';
+          _error = L10n.t('oobe_save_error', {'e': '$e'});
         });
       }
     } finally {
@@ -185,7 +186,7 @@ class _KorteksOobeScreenState extends State<KorteksOobeScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'KorteksOS İlk Kurulum Sihirbazı (OOBE)',
+                L10n.t('oobe_title'),
                 style: TextStyle(
                   color: c.textMain,
                   fontSize: 20,
@@ -193,14 +194,17 @@ class _KorteksOobeScreenState extends State<KorteksOobeScreen> {
                 ),
               ),
               Text(
-                'Ring-1 İşletim Sistemi Çekirdeği • Memo v3 Embedded',
+                L10n.t('oobe_subtitle'),
                 style: TextStyle(color: c.textMuted, fontSize: 13),
               ),
             ],
           ),
         ),
         Text(
-          'Adım ${_step + 1}/${_stepTitles.length}',
+          L10n.t('oobe_step_counter', {
+            'current': '${_step + 1}',
+            'total': '${_stepTitleKeys.length}',
+          }),
           style: const TextStyle(
             color: MemoTheme.accentLight,
             fontWeight: FontWeight.w600,
@@ -214,7 +218,7 @@ class _KorteksOobeScreenState extends State<KorteksOobeScreen> {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
-      children: List.generate(_stepTitles.length, (idx) {
+      children: List.generate(_stepTitleKeys.length, (idx) {
         final active = idx == _step;
         final done = idx < _step;
         return InkWell(
@@ -234,7 +238,7 @@ class _KorteksOobeScreenState extends State<KorteksOobeScreen> {
               ),
             ),
             child: Text(
-              '${idx + 1}. ${_stepTitles[idx]}',
+              '${idx + 1}. ${L10n.t(_stepTitleKeys[idx])}',
               style: TextStyle(
                 color: active ? MemoTheme.accentLight : c.textSecondary,
                 fontSize: 12,
@@ -256,7 +260,7 @@ class _KorteksOobeScreenState extends State<KorteksOobeScreen> {
             _infoBanner(
               c,
               icon: Icons.developer_board,
-              title: 'Algılanan Donanım Profili',
+              title: L10n.t('oobe_detected_hardware'),
               subtitle: widget.initialHardwareSummary,
             ),
             const SizedBox(height: 16),
@@ -264,11 +268,11 @@ class _KorteksOobeScreenState extends State<KorteksOobeScreen> {
               key: const Key('oobe_apu_boost_switch'),
               contentPadding: EdgeInsets.zero,
               title: Text(
-                'korteks-apu-boost (Vulkan UMA Zero-Copy + 10 GB GTT)',
+                L10n.t('oobe_apu_boost_title'),
                 style: TextStyle(color: c.textMain, fontWeight: FontWeight.w500),
               ),
               subtitle: Text(
-                'Ryzen APU ve 16 GB RAM sistemlerde paylaşımlı VRAM havuzunu dinamik optimize eder.',
+                L10n.t('oobe_apu_boost_subtitle'),
                 style: TextStyle(color: c.textMuted, fontSize: 13),
               ),
               value: _apuBoost,
@@ -279,28 +283,28 @@ class _KorteksOobeScreenState extends State<KorteksOobeScreen> {
         );
 
       case 1:
-        const models = [
+        final models = [
           (
             'Qwen2.5-Coder-7B-Instruct-Q4_K_M',
-            'Qwen 2.5 Coder 7B (Q4_K_M • ~4.7 GB)',
-            'Kodlama, Linux yönetimi ve Türkçe/İngilizce ajan görevleri için önerilen.'
+            L10n.t('oobe_model_qwen_title'),
+            L10n.t('oobe_model_qwen_desc'),
           ),
           (
             'Llama-3.2-3B-Instruct-Q4_K_M',
-            'Llama 3.2 3B (Q4_K_M • ~2.1 GB)',
-            'Minimum RAM kullanımı ve düşük gecikmeli hızlı yanıtlar için.'
+            L10n.t('oobe_model_llama_title'),
+            L10n.t('oobe_model_llama_desc'),
           ),
           (
             'cloud-only',
-            'Yalnızca Bulut Sağlayıcı (OpenRouter / Anthropic / Gemini)',
-            'Yerel VRAM ayırmadan harici API anahtarıyla çalıştırır.'
+            L10n.t('oobe_model_cloud_title'),
+            L10n.t('oobe_model_cloud_desc'),
           ),
         ];
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Varsayılan Beyin Modelini Seçin',
+              L10n.t('oobe_select_brain_model'),
               style: TextStyle(
                 color: c.textMain,
                 fontSize: 16,
@@ -332,21 +336,21 @@ class _KorteksOobeScreenState extends State<KorteksOobeScreen> {
         );
 
       case 2:
-        const modes = [
+        final modes = [
           (
             'locked',
-            'Locked (Sadece Gözlem)',
-            'Memo yalnızca Ring-0 okuma ve masaüstü düzenleme yapar; sistem değişikliği yapmaz.'
+            L10n.t('oobe_ring_locked_title'),
+            L10n.t('oobe_ring_locked_desc'),
           ),
           (
             'hybrid',
-            'Hybrid (Önerilen — Pre-Snapshot + Onay)',
-            'Ring-1/Ring-2 işlemlerden önce otomatik @snapshots Btrfs CoW yedeği alır ve onay ister.'
+            L10n.t('oobe_ring_hybrid_title'),
+            L10n.t('oobe_ring_hybrid_desc'),
           ),
           (
             'autonomous',
-            'Autonomous (Tam Otonom Ring-1)',
-            'Servis/paket güncellemelerini pre-snapshot güvencesiyle doğrudan yürütür (@memo-vault her zaman korunur).'
+            L10n.t('oobe_ring_autonomous_title'),
+            L10n.t('oobe_ring_autonomous_desc'),
           ),
         ];
         return Column(
@@ -355,9 +359,8 @@ class _KorteksOobeScreenState extends State<KorteksOobeScreen> {
             _infoBanner(
               c,
               icon: Icons.security,
-              title: 'Btrfs @memo-vault İzolasyonu Aktif',
-              subtitle:
-                  '/var/lib/korteks/vault altındaki anılarınız ve modelleriniz OS geri yüklemelerinde asla silinmez.',
+              title: L10n.t('oobe_btrfs_banner_title'),
+              subtitle: L10n.t('oobe_btrfs_banner_subtitle'),
             ),
             const SizedBox(height: 12),
             RadioGroup<String>(
@@ -388,7 +391,7 @@ class _KorteksOobeScreenState extends State<KorteksOobeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '1-Tıkla Distrobox Geliştirici Konteynerleri',
+              L10n.t('oobe_distrobox_title'),
               style: TextStyle(
                 color: c.textMain,
                 fontSize: 16,
@@ -397,7 +400,7 @@ class _KorteksOobeScreenState extends State<KorteksOobeScreen> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Immutable host sisteminizi kirletmeden izole konteyner geliştirme ortamları oluşturun:',
+              L10n.t('oobe_distrobox_subtitle'),
               style: TextStyle(color: c.textMuted, fontSize: 13),
             ),
             const SizedBox(height: 16),
@@ -441,11 +444,11 @@ class _KorteksOobeScreenState extends State<KorteksOobeScreen> {
               key: const Key('oobe_voice_switch'),
               contentPadding: EdgeInsets.zero,
               title: Text(
-                'Super+M Küresel Sesli HUD (whisper.cpp + Piper TTS)',
+                L10n.t('oobe_voice_title'),
                 style: TextStyle(color: c.textMain, fontWeight: FontWeight.w500),
               ),
               subtitle: Text(
-                'Herhangi bir pencere üzerinde Super+M kısayoluyla sesli komut ve anlık sistem kontrolü açar.',
+                L10n.t('oobe_voice_subtitle'),
                 style: TextStyle(color: c.textMuted, fontSize: 13),
               ),
               value: _voiceEnabled,
@@ -456,9 +459,13 @@ class _KorteksOobeScreenState extends State<KorteksOobeScreen> {
             _infoBanner(
               c,
               icon: Icons.check_circle_outline,
-              title: 'Özet Yapılandırma',
-              subtitle:
-                  'Yetki Modu: $_ringMode • APU Boost: ${_apuBoost ? "Aktif" : "Kapalı"} • Model: $_selectedModel • Stack: ${_stacks.isEmpty ? "yok" : _stacks.join(", ")}',
+              title: L10n.t('oobe_summary_title'),
+              subtitle: L10n.t('oobe_summary_subtitle', {
+                'ring': _ringMode,
+                'apu': _apuBoost ? L10n.t('oobe_active') : L10n.t('oobe_off'),
+                'model': _selectedModel,
+                'stacks': _stacks.isEmpty ? L10n.t('oobe_none') : _stacks.join(', '),
+              }),
             ),
           ],
         );
@@ -509,7 +516,7 @@ class _KorteksOobeScreenState extends State<KorteksOobeScreen> {
   }
 
   Widget _buildFooter(ThemeColors c) {
-    final isLast = _step == _stepTitles.length - 1;
+    final isLast = _step == _stepTitleKeys.length - 1;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -517,7 +524,7 @@ class _KorteksOobeScreenState extends State<KorteksOobeScreen> {
           OutlinedButton(
             key: const Key('oobe_back_btn'),
             onPressed: _submitting ? null : () => setState(() => _step--),
-            child: const Text('Geri'),
+            child: Text(L10n.t('oobe_back')),
           )
         else
           const SizedBox.shrink(),
@@ -538,7 +545,7 @@ class _KorteksOobeScreenState extends State<KorteksOobeScreen> {
                   }
                 },
           icon: Icon(isLast ? Icons.rocket_launch : Icons.arrow_forward),
-          label: Text(isLast ? 'KorteksOS\'i Başlat' : 'İleri'),
+          label: Text(isLast ? L10n.t('oobe_finish') : L10n.t('oobe_next')),
         ),
       ],
     );

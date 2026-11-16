@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:memo_flutter/core/l10n.dart';
 import 'package:memo_flutter/screens/oobe/korteks_oobe_screen.dart';
 
 void main() {
   testWidgets('KorteksOobeScreen walks through 5 steps and submits config',
       (tester) async {
+    L10n.setLocale(MemoLocale.tr);
+    addTearDown(() => L10n.setLocale(MemoLocale.en));
     tester.view.physicalSize = const Size(1280, 900);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);

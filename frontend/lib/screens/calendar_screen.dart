@@ -626,7 +626,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                           firstDate: DateTime.now().subtract(const Duration(days: 1)),
                           lastDate: DateTime.now().add(const Duration(days: 365)),
                         );
-                        if (d == null) return;
+                        if (d == null || !ctx.mounted) return;
                         final t = await showTimePicker(
                           context: ctx,
                           initialTime: TimeOfDay.fromDateTime(picked),

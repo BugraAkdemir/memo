@@ -454,7 +454,7 @@ class _ChatListItemState extends State<_ChatListItem> {
         ),
       ],
     ).then((value) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       if (value == 'rename') {
         _startEditing();
       } else if (value == 'delete') {

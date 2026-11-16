@@ -127,7 +127,11 @@ func (a *App) compactToolsFor(ctx context.Context, chatID string) *agent.Compact
 	if !a.onDemandToolsActive(ctx) {
 		return nil
 	}
-	return agent.NewOnDemandTools(a.compactGroups.get(chatID), func(g string) {
+	pinned := agent.NormalHybridCoreTools
+	if codeModeActive(ctx) || a.resolveCodeMode(chatID) {
+		pinned = agent.CodeHybridCoreTools
+	}
+	return agent.NewOnDemandTools(a.compactGroups.get(chatID), pinned, func(g string) {
 		a.compactGroups.add(chatID, g)
 	})
 }

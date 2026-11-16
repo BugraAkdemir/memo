@@ -605,7 +605,7 @@ class L10n {
     'on_demand_tools_on': 'Etkin — Araçlar Gerektiğinde Yüklenir',
     'on_demand_tools_off': 'Kapalı — Tüm Araçlar Her Turda Gönderilir',
     'on_demand_tools_desc':
-        'Başlangıçta yalnızca load_tools göndererek her turdaki ~10K araç bağlamı tüketimini düşürür; model gereken grupları kendisi yükler.',
+        'Yalnızca temel araçları ve load_tools kataloğunu başlangıçta göndererek her turdaki ~10K araç bağlamı tüketimini düşürür; model gereken ek grupları kendisi yükler.',
     'on_demand_tools_toggle_error':
         'İsteğe bağlı araç ayarı değiştirilemedi: \${e}',
     'web_search_section': 'Web Araması',
@@ -3737,7 +3737,7 @@ class L10n {
     'on_demand_tools_on': 'Active — Tools Load on Demand',
     'on_demand_tools_off': 'Off — All Tools Sent Every Turn',
     'on_demand_tools_desc':
-        'Sends only load_tools initially to cut ~10K per-turn tool schema overhead; the model loads needed groups on demand.',
+        'Sends only core tools plus load_tools initially to cut ~10K per-turn tool schema overhead; the model loads extra groups on demand.',
     'on_demand_tools_toggle_error':
         'Failed to toggle on-demand tools: \${e}',
     'web_search_section': 'Web Search',

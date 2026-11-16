@@ -73,9 +73,12 @@ func groupByNameIn(groups []ToolGroup, name string) (ToolGroup, bool) {
 // for the rest of the chat (the tool list is part of the prompt prefix;
 // changing it every turn would throw the KV/prompt cache away every turn).
 // Budget caps the tokens the offered tool definitions may take (0 = unbounded).
+// Pinned names core tools offered upfront alongside load_tools without
+// requiring a round-trip first (used on normal/large windows).
 type CompactTools struct {
 	Budget   int
 	Extended bool
+	Pinned   map[string]bool
 	// OnLoad, when set, is told about every group that gets loaded, so the
 	// caller can keep it for the chat's next turns.
 	OnLoad func(group string)
@@ -83,6 +86,13 @@ type CompactTools struct {
 	mu     sync.Mutex
 	loaded map[string]bool
 }
+
+// NormalHybridCoreTools and CodeHybridCoreTools are the upfront core tools
+// kept loaded alongside load_tools in >=10k hybrid mode.
+var (
+	NormalHybridCoreTools = []string{"read_file", "list_directory", "search_content", "web_search"}
+	CodeHybridCoreTools   = []string{"read_file", "list_directory", "search_content", "search_files", "write_file", "edit_file", "run_command"}
+)
 
 // NewCompactTools starts from the groups the chat already loaded (small-window mode).
 func NewCompactTools(budget int, loaded []string, onLoad func(string)) *CompactTools {
@@ -95,10 +105,15 @@ func NewCompactTools(budget int, loaded []string, onLoad func(string)) *CompactT
 	return c
 }
 
-// NewOnDemandTools creates an on-demand loader for normal/large windows with
-// all extended groups available (filtered per turn to actually active tools).
-func NewOnDemandTools(loaded []string, onLoad func(string)) *CompactTools {
-	c := &CompactTools{Budget: 0, Extended: true, OnLoad: onLoad, loaded: map[string]bool{}}
+// NewOnDemandTools creates a hybrid on-demand loader for normal/large windows:
+// pinned core tools are available immediately while all extended groups can be
+// loaded on demand via load_tools.
+func NewOnDemandTools(loaded []string, pinned []string, onLoad func(string)) *CompactTools {
+	pinMap := make(map[string]bool, len(pinned))
+	for _, name := range pinned {
+		pinMap[name] = true
+	}
+	c := &CompactTools{Budget: 0, Extended: true, Pinned: pinMap, OnLoad: onLoad, loaded: map[string]bool{}}
 	for _, g := range loaded {
 		if _, ok := groupByNameIn(allToolGroups, g); ok {
 			c.loaded[g] = true
@@ -127,6 +142,9 @@ func (c *CompactTools) Loaded() []string {
 }
 
 func (c *CompactTools) offers(tool string) bool {
+	if c.Pinned[tool] {
+		return true
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	groups := c.groups()
@@ -180,7 +198,7 @@ func (c *CompactTools) LoadToolsDefinitionFor(all []provider.ToolDefinition) pro
 	var avail []ToolGroup
 	for _, g := range c.groups() {
 		for _, t := range g.Tools {
-			if present[t] {
+			if present[t] && !c.Pinned[t] {
 				avail = append(avail, g)
 				break
 			}

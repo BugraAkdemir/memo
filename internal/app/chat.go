@@ -402,7 +402,7 @@ func (a *App) routeStreamInner(ctx context.Context, messages []api.Message, user
 						messages[i].Content = content + buildAgentSystemPrompt()
 					}
 					if onDemand {
-						messages[i].Content = messages[i].Content.(string) + "\n" + identity.CompactAgentRule
+						messages[i].Content = messages[i].Content.(string) + "\n" + identity.HybridAgentRule
 					}
 				}
 				break

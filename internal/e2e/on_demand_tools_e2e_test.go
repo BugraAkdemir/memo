@@ -35,36 +35,47 @@ func TestOnDemandTools_StartsWithLoadToolsAndLoadsOnDemand(t *testing.T) {
 	})
 	h.SetAgentEnabled(true)
 
-	proj := t.TempDir()
-	if err := os.WriteFile(filepath.Join(proj, "hello.txt"), []byte("on-demand-ok"), 0644); err != nil {
+	wsDir := filepath.Join(config.DataDir(), "workspace")
+	if err := os.MkdirAll(wsDir, 0755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(wsDir, "hello.txt"), []byte("on-demand-ok"), 0644); err != nil {
 		t.Fatalf("write hello.txt: %v", err)
 	}
 
 	var offeredPerCall [][]string
 	var loadDesc string
 	h.Fake.Script = func(callNum int, req FakeChatRequest) FakeChatResponse {
+		if len(req.Tools) == 0 {
+			// Background chat-title generation call arrives with no tools.
+			return FakeChatResponse{Text: "test title"}
+		}
 		offeredPerCall = append(offeredPerCall, reqToolNames(req))
-		switch callNum {
+		switch len(offeredPerCall) {
 		case 1:
-			if len(req.Tools) == 1 {
+			for _, raw := range req.Tools {
 				var item struct {
 					Function struct {
+						Name        string `json:"name"`
 						Description string `json:"description"`
 					} `json:"function"`
 				}
-				_ = json.Unmarshal(req.Tools[0], &item)
-				loadDesc = item.Function.Description
+				if json.Unmarshal(raw, &item) == nil && item.Function.Name == "load_tools" {
+					loadDesc = item.Function.Description
+				}
 			}
+			// Pinned core tool (read_file) executes directly on call 1 with zero load_tools roundtrip.
 			return FakeChatResponse{ToolCalls: []FakeToolCall{{
 				ID:        "tc-1",
-				Name:      "load_tools",
-				Arguments: `{"groups":["files_read"]}`,
-			}}}
-		case 2:
-			return FakeChatResponse{ToolCalls: []FakeToolCall{{
-				ID:        "tc-2",
 				Name:      "read_file",
 				Arguments: `{"path":"hello.txt"}`,
+			}}}
+		case 2:
+			// Deferred group (tasks) is loaded dynamically via load_tools.
+			return FakeChatResponse{ToolCalls: []FakeToolCall{{
+				ID:        "tc-2",
+				Name:      "load_tools",
+				Arguments: `{"groups":["tasks"]}`,
 			}}}
 		default:
 			var sawFileContent bool
@@ -81,9 +92,9 @@ func TestOnDemandTools_StartsWithLoadToolsAndLoadsOnDemand(t *testing.T) {
 		}
 	}
 
-	chatID := h.NewAgentChat(proj)
+	chatID := h.NewChat()
 	var reply strings.Builder
-	for chunk := range h.SendMessageStreamAsync(chatID, "read hello.txt") {
+	for chunk := range h.SendMessageStreamAsync(chatID, "read hello.txt and check tasks") {
 		if chunk.Error != "" {
 			t.Fatalf("stream error: %s", chunk.Error)
 		}
@@ -95,28 +106,39 @@ func TestOnDemandTools_StartsWithLoadToolsAndLoadsOnDemand(t *testing.T) {
 	if len(offeredPerCall) != 3 {
 		t.Fatalf("model calls = %d, want 3 (%v)", len(offeredPerCall), offeredPerCall)
 	}
-	if len(offeredPerCall[0]) != 1 || offeredPerCall[0][0] != "load_tools" {
-		t.Fatalf("call 1 tools = %v, want only [load_tools]", offeredPerCall[0])
+	call1Set := make(map[string]bool, len(offeredPerCall[0]))
+	for _, n := range offeredPerCall[0] {
+		call1Set[n] = true
 	}
-	if !strings.Contains(loadDesc, "files_read =") {
-		t.Errorf("load_tools description missing files_read: %q", loadDesc)
+	for _, core := range []string{"load_tools", "read_file", "list_directory", "search_content", "web_search"} {
+		if !call1Set[core] {
+			t.Fatalf("call 1 missing hybrid core tool %q: %v", core, offeredPerCall[0])
+		}
+	}
+	for _, deferred := range []string{"create_task_md", "edit_file", "run_command", "mail_send", "whatsapp_send"} {
+		if call1Set[deferred] {
+			t.Fatalf("call 1 should not offer deferred/disconnected tool %q upfront", deferred)
+		}
+	}
+	if !strings.Contains(loadDesc, "tasks =") {
+		t.Errorf("load_tools description missing tasks: %q", loadDesc)
 	}
 	for _, absent := range []string{"mail =", "contacts ="} {
 		if strings.Contains(loadDesc, absent) {
 			t.Errorf("load_tools should omit disconnected group %q: %q", absent, loadDesc)
 		}
 	}
-	var hasReadFile bool
-	for _, name := range offeredPerCall[1] {
-		if name == "read_file" {
-			hasReadFile = true
+	var hasCreateTaskMd bool
+	for _, name := range offeredPerCall[2] {
+		if name == "create_task_md" {
+			hasCreateTaskMd = true
 		}
 		if name == "mail_send" || name == "whatsapp_send" {
 			t.Errorf("disconnected tool %q should never be offered", name)
 		}
 	}
-	if !hasReadFile {
-		t.Fatalf("call 2 tools = %v, want read_file after loading files_read", offeredPerCall[1])
+	if !hasCreateTaskMd {
+		t.Fatalf("call 3 tools = %v, want create_task_md after loading tasks", offeredPerCall[2])
 	}
 }
 

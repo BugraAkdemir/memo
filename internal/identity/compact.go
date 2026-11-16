@@ -32,3 +32,7 @@ func (id *Identity) BuildCompactSystemPrompt(agentEnabled bool) string {
 // CompactAgentRule is the one line about tools the compact prompt carries when
 // agent mode is on.
 const CompactAgentRule = "When a task needs a tool, load its group with load_tools, then call it. Never claim a tool result you did not receive."
+
+// HybridAgentRule guides normal/large-window turns where core tools are
+// upfront and additional domains live behind load_tools.
+const HybridAgentRule = "Core tools are ready to call directly. If a task needs an additional capability (writing/editing files, shell, tasks, subagents, mail, messaging, calendar, skills, browser, system), check load_tools and load the matching group first. Never claim a tool result you did not receive."

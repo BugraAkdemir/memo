@@ -152,7 +152,7 @@ func TestRegularRun_HasNoLoadTools(t *testing.T) {
 }
 
 func TestOnDemandTools_LoadsExtendedGroupsAndPrunesUnavailable(t *testing.T) {
-	c := NewOnDemandTools(nil, nil)
+	c := NewOnDemandTools(nil, NormalHybridCoreTools, nil)
 	base := NewRegistry().ToOpenAITools(nil) // lacks browser_* (Beta) and sys_* (OS)
 	def := c.LoadToolsDefinitionFor(base)
 	desc := def.Function.Description
@@ -161,10 +161,25 @@ func TestOnDemandTools_LoadsExtendedGroupsAndPrunesUnavailable(t *testing.T) {
 			t.Errorf("LoadToolsDefinitionFor should omit empty group %q from description: %s", absent, desc)
 		}
 	}
-	for _, present := range []string{"files_read", "subagents", "tasks", "skills", "system"} {
+	for _, present := range []string{"files_read", "files_write", "subagents", "tasks", "skills", "system"} {
 		if !strings.Contains(desc, present+" =") {
 			t.Errorf("LoadToolsDefinitionFor should include group %q in description: %s", present, desc)
 		}
+	}
+
+	// Upfront Filter offers load_tools + pinned NormalHybridCoreTools, but not deferred tools.
+	initial := c.Filter(base, nil)
+	var initNames []string
+	for _, d := range initial {
+		initNames = append(initNames, d.Function.Name)
+	}
+	for _, core := range NormalHybridCoreTools {
+		if !hasName(initNames, core) {
+			t.Errorf("pinned core tool %q missing from initial hybrid filter: %v", core, initNames)
+		}
+	}
+	if hasName(initNames, "use_skill") || hasName(initNames, "edit_file") {
+		t.Errorf("deferred tools should not be offered before load_tools: %v", initNames)
 	}
 
 	got := c.Load([]byte(`{"groups":["skills","tasks"]}`), base, nil)

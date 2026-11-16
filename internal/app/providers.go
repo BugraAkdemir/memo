@@ -98,7 +98,7 @@ func (a *App) UpdateProvider(cfg provider.ProviderConfig) error {
 	if hctx != nil {
 		goRecover("providerRouter.HealthCheck", func() { rt.HealthCheck(hctx, 5*time.Minute) })
 	}
-	if cfg.Enabled {
+	if cfg.Enabled && (a.GetActiveProvider() == "" || a.GetActiveProvider() == cfg.Name) {
 		_, _ = provider.CachedContextWindow(cfg, cfg.Model)
 	}
 	return nil

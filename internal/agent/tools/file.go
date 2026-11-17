@@ -385,6 +385,18 @@ func validatePath(targetPath, basePath string) (string, error) {
 		basePath = absBase
 	}
 
+	// Support @file mention syntax (e.g. "@handoff.md") when the literal
+	// "@..." path does not exist on disk.
+	if strings.HasPrefix(targetPath, "@") && len(targetPath) > 1 {
+		literalPath := targetPath
+		if !filepath.IsAbs(literalPath) {
+			literalPath = filepath.Join(basePath, literalPath)
+		}
+		if _, err := os.Stat(literalPath); os.IsNotExist(err) {
+			targetPath = strings.TrimPrefix(targetPath, "@")
+		}
+	}
+
 	// Expand a leading "~" to the real home directory before the
 	// IsAbs check below — Go's filepath package (unlike a shell) never
 	// does this on its own, so "~" was falling through to the relative-

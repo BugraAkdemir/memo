@@ -99,7 +99,12 @@ func TestBriefingDeliveryIsRetriedAfterAKnownFailureNotBefore(t *testing.T) {
 	a, s, _ := briefingApp(t, true, false, false)
 	tg := attachTelegram(t, a, 55, 1)
 	setBriefingChannels(t, s, func(b *twin.BriefingSettings) { b.Channels = []string{"telegram"} })
-	now := time.Now()
+	// Avoid crossing UTC midnight during the +20m simulated clock advance,
+	// which would legitimately trigger a second morning briefing for the next day.
+	now := time.Now().UTC()
+	if now.Hour() == 23 && now.Minute() >= 35 {
+		now = now.Add(-30 * time.Minute)
+	}
 	a.runBriefings(ctx, now)
 	if n := len(tg.messages()); n != 0 {
 		t.Fatalf("the first send was meant to fail: %d", n)

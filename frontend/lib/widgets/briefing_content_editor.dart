@@ -202,9 +202,9 @@ class _BriefingContentEditorState extends State<BriefingContentEditor> {
           TextField(
             key: const ValueKey('briefing-custom-prompt'),
             controller: _prompt,
-            maxLength: 500,
+            maxLength: 2000,
             minLines: 1,
-            maxLines: 4,
+            maxLines: 6,
             decoration: InputDecoration(
               labelText: L10n.t('briefing_custom_item_prompt'),
               counterText: '',

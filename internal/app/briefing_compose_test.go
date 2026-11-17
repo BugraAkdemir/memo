@@ -2,11 +2,16 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"memo/internal/agent"
 	"memo/internal/autonomy"
+	"memo/internal/provider"
 	"memo/internal/twin"
 )
 
@@ -81,5 +86,96 @@ func TestBriefingModelErrorIsReturnedNotSwallowed(t *testing.T) {
 	_, err := composeBriefingWith(func(context.Context, string, string) (string, error) { return "", boom }, "en")(context.Background(), composeInput())
 	if !errors.Is(err, boom) {
 		t.Fatalf("the caller decides to fall back, so the error must come through: %v", err)
+	}
+}
+
+type scriptedBriefingProvider struct {
+	reqs      []provider.ChatRequest
+	responses []provider.ChatResponse
+}
+
+func (s *scriptedBriefingProvider) ChatCompletion(_ context.Context, req provider.ChatRequest) (*provider.ChatResponse, error) {
+	s.reqs = append(s.reqs, req)
+	idx := len(s.reqs) - 1
+	if idx >= len(s.responses) {
+		return nil, errors.New("unexpected extra ChatCompletion call")
+	}
+	r := s.responses[idx]
+	return &r, nil
+}
+
+func TestBriefingToolLoopCanReadAtMentionFileAndProduceLongReport(t *testing.T) {
+	dir := t.TempDir()
+	handoffContent := "# Handoff\n- Son yapılan: v5.1.0 sürümü ve tüm testlerin onarımı\n- Açık işler: Fiziksel Windows/macOS kabul testleri\n"
+	if err := os.WriteFile(filepath.Join(dir, "handoff.md"), []byte(handoffContent), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	longReport := strings.Repeat("Kapsamlı rapor satırı: Son oturumda v5.1.0 tamamlandı ve açık işler listelendi.\n", 20)
+	replyJSON, err := json.Marshal(map[string]any{
+		"summary": "Sabah özeti hazır.",
+		"custom":  []string{longReport},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fake := &scriptedBriefingProvider{
+		responses: []provider.ChatResponse{
+			{
+				ToolCalls: []provider.ToolCall{{
+					ID:   "call-read-handoff",
+					Type: "function",
+					Function: provider.ToolCallFunction{
+						Name:      "read_file",
+						Arguments: json.RawMessage(`{"path":"@handoff.md"}`),
+					},
+				}},
+				Usage: &provider.Usage{PromptTokens: 100, CompletionTokens: 20},
+			},
+			{
+				Content: string(replyJSON),
+				Usage:   &provider.Usage{PromptTokens: 250, CompletionTokens: 400},
+			},
+		},
+	}
+
+	reg := agent.NewBriefingRegistry()
+	compose := composeBriefingWith(func(ctx context.Context, system, user string) (string, error) {
+		out, _, err := runBriefingToolLoop(ctx, fake, "test-model", reg, dir, system, user)
+		return out, err
+	}, "tr")
+
+	in := autonomy.ComposeInput{
+		Title: "2026-11-17",
+		Custom: []twin.BriefingCustom{{
+			Title:  "Handoff Raporu",
+			Prompt: "https://github.com/BugraAkdemir/memo bu repomun içindeki @handoff.md yi incele en son ne yapılmış ne yarım kalmış kapsamlı bir rapor ver",
+		}},
+	}
+	out, err := compose(context.Background(), in)
+	if err != nil {
+		t.Fatalf("compose failed: %v", err)
+	}
+	if len(fake.reqs) != 2 {
+		t.Fatalf("expected 2 model calls (tool call + final JSON), got %d", len(fake.reqs))
+	}
+	if len(fake.reqs[0].Tools) == 0 {
+		t.Fatal("expected briefing tools (web_search, fetch_page, read_file, ...) to be offered to the model")
+	}
+	// Second request must contain the tool result with the actual handoff.md content.
+	lastMsgs := fake.reqs[1].Messages
+	foundToolResult := false
+	for _, m := range lastMsgs {
+		if text, ok := m.Content.(string); ok && m.Role == "tool" && strings.Contains(text, "v5.1.0 sürümü") {
+			foundToolResult = true
+			break
+		}
+	}
+	if !foundToolResult {
+		t.Fatalf("expected tool result with handoff.md contents in second call messages: %+v", lastMsgs)
+	}
+	if len(out.Custom) != 1 || out.Custom[0] != longReport || len(out.Custom[0]) <= 1000 {
+		t.Fatalf("expected full multi-line report (>1000 chars), got len=%d", len(out.Custom[0]))
 	}
 }

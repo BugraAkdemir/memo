@@ -133,6 +133,24 @@ func TestBriefingTextIsBoundedBeforeStorage(t *testing.T) {
 			t.Fatalf("item not truncated: %d", len([]rune(it)))
 		}
 	}
+	longCustom := string(make([]rune, 2500))
+	for i := range longCustom {
+		_ = i
+	}
+	longReport := fmt.Sprintf("%02500d", 1)
+	if _, err := s.SaveBriefing(ctx, Briefing{
+		Key:       "morning:custom-long",
+		Kind:      "morning",
+		Title:     "2026-11-17",
+		CreatedAt: time.Now().Add(time.Minute),
+		Sections:  []BriefingSection{{Heading: "custom", Label: "Rapor", Items: []string{longReport}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	customList, _ := s.Briefings(ctx, 1)
+	if got := len([]rune(customList[0].Sections[0].Items[0])); got != 2500 {
+		t.Fatalf("custom section report was truncated at %d runes, want full 2500 runes", got)
+	}
 	if _, err := s.SaveBriefing(ctx, Briefing{Kind: "morning", Title: "x"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("a briefing without a key was accepted: %v", err)
 	}

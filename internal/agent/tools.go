@@ -626,6 +626,16 @@ func NewReadOnlyRegistry() *ToolRegistry {
 	return r
 }
 
+// NewBriefingRegistry creates a registry with safe read-only file/project/calendar
+// inspection tools plus web_search and fetch_page, excluding read_env and any
+// mutating tools. Used when the morning briefing model answers the owner's custom
+// briefing instructions (news, URLs, repo/file reports such as @handoff.md).
+func NewBriefingRegistry() *ToolRegistry {
+	r := NewReadOnlyRegistry()
+	r.Unregister("read_env")
+	return r
+}
+
 func (r *ToolRegistry) Register(tool ToolDef) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

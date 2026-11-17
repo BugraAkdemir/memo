@@ -52,9 +52,10 @@ var (
 )
 
 const (
-	briefingMaxCustom   = 5
-	briefingTitleRunes  = 60
-	briefingPromptRunes = 500
+	briefingMaxCustom       = 5
+	briefingTitleRunes      = 60
+	briefingPromptRunes     = 2000
+	briefingCustomItemRunes = 16000
 )
 
 // SectionEnabled reports whether a built-in section belongs in the briefing.
@@ -182,12 +183,16 @@ func clampBriefing(b Briefing) Briefing {
 		if len(secs) >= briefingMaxLines {
 			break
 		}
+		maxItemRunes := 400
+		if sec.Heading == "custom" {
+			maxItemRunes = briefingCustomItemRunes
+		}
 		items := make([]string, 0, len(sec.Items))
 		for _, it := range sec.Items {
 			if len(items) >= briefingMaxItems {
 				break
 			}
-			items = append(items, truncateRunes(strings.TrimSpace(it), 400))
+			items = append(items, truncateRunes(strings.TrimSpace(it), maxItemRunes))
 		}
 		secs = append(secs, BriefingSection{Heading: truncateRunes(strings.TrimSpace(sec.Heading), 120), Items: items, Counts: sec.Counts, Label: truncateRunes(strings.TrimSpace(sec.Label), 120)})
 	}

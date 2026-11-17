@@ -9,6 +9,9 @@
 - Açık kabul: fiziksel Windows (cold/warm `StartupTiming`, Explorer/overflow/mascot, crash/Task-Kill) ve fiziksel macOS (Force Quit + `open_app`/updater) kabulü, artı güncel çalışma için uzak CI koşusu. Linux/mac X-to-tray varsayılanı host doğrulamasına dek eski hâlinde; kayıtlı tercihler korunur.
 - `docs/MMPROJ_WINDOWS_STARTUP_REVIEW.md` içindeki mmproj indirme/onarım ve Windows frontend başlangıç bulguları `main` üzerinde karşılandı (gerçek HF “ofical gemma 4ab” canlı kabulü yok). Önceden açık olan 3 sohbet/e2e testi, `internal/updater` testleri ve `GO-2026-6859` için Go `1.26.10`→`1.26.11` güncellemesi 17 Kasım oturumunda tamamlandı.
 
+**Motorları kurulumda indirme (tag sürümleri) — 17 Kasım**
+- Plan `docs/plans/PLAN_engine_on_demand.md` (`db8e55e8`), kararlar planda. Henüz kod yok, sıradaki Adım 1 (Whisper modelini motor klasöründen ayırmak). Beta değişmez; R2'ye her yazımdan önce kullanıcıya sor.
+
 **Tanıtım filmi / Reels**
 - 4 Python/Rust Reels ve paket: build_output/marketing/python-rust-reels/; son kareler/altyazı/ZIP doğrulandı, kullanıcı geri bildirimi bekleniyor. Plan docs/plans/PLAN_python_rust_reels.md; önceki oturum ayrıntısı arşivde.
 - Memo tanıtım planı 5a6f35ba + tarih süzgeci e68c0482 önceki kayıtta push edilmemiş; bu oturumda kontrol yok. Telefon bölümü çizim, gerçek kayıt kullanıcıda (§6); Whisper/SRT açık.

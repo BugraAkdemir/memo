@@ -41,16 +41,11 @@ func TestBuildSystemPromptWithCustomRole(t *testing.T) {
 	}
 }
 
-// TestBuildSystemPromptWithCustomRole_StillHasOriginBlock locks in the fix
-// for a wizard persona (or any hand-written custom prompt) silently
-// dropping "who made you" grounding — CustomRole replaces buildIdentityBlock
-// entirely, so the origin facts must be appended independently of it, not
-// live inside it.
-func TestBuildSystemPromptWithCustomRole_StillHasOriginBlock(t *testing.T) {
-	id := New("Alice", "Memo", "casual", "You are a formal, professional assistant.", false)
+func TestBuildSystemPrompt_NoOriginBlock(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", false)
 	prompt := id.BuildSystemPrompt(nil, false, true, true, false, false)
-	if !strings.Contains(prompt, "Buğra Akdemir") {
-		t.Error("origin block (who built Memo) should be present even when a custom role/persona is set")
+	if strings.Contains(prompt, "Buğra Akdemir") {
+		t.Error("origin block should not be injected into the system prompt")
 	}
 }
 
@@ -359,8 +354,8 @@ func TestBuildSystemPrompt_MinimalMode_KeepPersona_OnlyRestoresPersona(t *testin
 	id.SetMinimalModeOverrides(true, false, false, false)
 	prompt := id.BuildSystemPrompt(nil, false, false, false, false, false)
 
-	if !strings.Contains(prompt, "Buğra Akdemir") {
-		t.Error("KeepPersona=true should restore the origin block")
+	if !strings.Contains(prompt, "Your identity:") {
+		t.Error("KeepPersona=true should restore the persona/identity block")
 	}
 	if strings.Contains(prompt, "calendar-worthy plans") {
 		t.Error("KeepPersona alone should not restore the passive-features block")
@@ -380,8 +375,8 @@ func TestBuildSystemPrompt_MinimalMode_KeepCapabilitiesOnly(t *testing.T) {
 	if !strings.Contains(prompt, "Agent mode") {
 		t.Error("KeepCapabilities=true should restore the capabilities block")
 	}
-	if strings.Contains(prompt, "Buğra Akdemir") {
-		t.Error("KeepCapabilities alone should not restore the persona/origin block")
+	if strings.Contains(prompt, "Your identity:") {
+		t.Error("KeepCapabilities alone should not restore the persona/identity block")
 	}
 	if strings.Contains(prompt, "calendar-worthy plans") {
 		t.Error("KeepCapabilities alone should not restore the passive-features block")
@@ -398,8 +393,8 @@ func TestBuildSystemPrompt_MinimalMode_KeepPassiveOnly(t *testing.T) {
 	if !strings.Contains(prompt, "calendar-worthy plans") {
 		t.Error("KeepPassive=true should restore the passive-features block")
 	}
-	if strings.Contains(prompt, "Buğra Akdemir") {
-		t.Error("KeepPassive alone should not restore the persona/origin block")
+	if strings.Contains(prompt, "Your identity:") {
+		t.Error("KeepPassive alone should not restore the persona/identity block")
 	}
 	if strings.Contains(prompt, "Agent mode") {
 		t.Error("KeepPassive alone should not restore the capabilities block")
@@ -414,7 +409,7 @@ func TestBuildSystemPrompt_MinimalMode_OverridesAreNoOpWhenNotMinimal(t *testing
 	id.SetMinimalModeOverrides(false, false, false, false)
 	prompt := id.BuildSystemPrompt(nil, false, false, false, false, false)
 
-	if !strings.Contains(prompt, "Buğra Akdemir") || !strings.Contains(prompt, "Agent mode") || !strings.Contains(prompt, "calendar-worthy plans") {
+	if !strings.Contains(prompt, "Your identity:") || !strings.Contains(prompt, "Agent mode") || !strings.Contains(prompt, "calendar-worthy plans") {
 		t.Error("overrides should have no effect when MinimalMode is off — everything should already be present")
 	}
 }

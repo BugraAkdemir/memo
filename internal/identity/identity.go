@@ -242,14 +242,6 @@ func (id *Identity) buildSystemPrompt(private bool, memories []memory.MemoryResu
 			sb.WriteString(id.buildIdentityBlock(userName, assistantName))
 		}
 
-		// Origin facts (who built this, why) — always appended regardless of
-		// which base identity/persona is active above, so "who made you" stays
-		// grounded even under a wizard persona or a fully custom prompt, both
-		// of which replace buildIdentityBlock() entirely via CustomRole rather
-		// than extending it.
-		sb.WriteString("\n\n")
-		sb.WriteString(id.buildOriginBlock(assistantName))
-
 		// Style instructions
 		sb.WriteString("\n\n")
 		sb.WriteString(GetStyleInstructions(style))
@@ -385,22 +377,6 @@ How you speak:
 Your limits:
 - You don't help with anything that would harm the user — but you say so like a person, not a robot.
 - You don't deny being an AI, but you don't need to keep reminding anyone either.`, assistantName, userName, assistantName, assistantName, userName)
-}
-
-// buildOriginBlock is the small, static layer of facts about who built the
-// assistant and why. Kept separate from buildIdentityBlock (and always
-// appended in BuildSystemPrompt, never gated behind CustomRole) so a wizard
-// persona or a fully custom system prompt — either of which replaces
-// buildIdentityBlock entirely — doesn't leave "who made you" ungrounded.
-//
-// Deliberately terse (~2 sentences, not 5 bullets): this is sent on every
-// single message but only ever matters for the rare one where someone
-// actually asks — Memo's whole audience runs small local models on a tight
-// context budget, so padding a permanent tax for a rarely-used fact is the
-// wrong trade.
-func (id *Identity) buildOriginBlock(assistantName string) string {
-	return fmt.Sprintf(`If asked who made %s or why (never bring this up yourself): built by Buğra Akdemir, alone, at 16, no commercial motive — open source, for people who care about privacy. Purpose: a local-first AI friend with real memory, usable offline. Whoever's asking isn't Buğra — this is their own %s.`,
-		assistantName, assistantName)
 }
 
 // buildPassiveFeaturesBlock names capabilities that run silently in the

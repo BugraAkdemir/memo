@@ -151,3 +151,9 @@ data/webchat/
 # Memo project folder created by running Memo on its own source tree, and the per-device registry
 /.memo/
 data/projects.json
+data/model-routing-capabilities.json
+
+# Locally staged engine binaries (llama.cpp / whisper) and scratch/review artifacts
+binaries-staged/
+fakeprovider.jsonl
+promt.txt

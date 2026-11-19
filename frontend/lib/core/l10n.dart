@@ -686,13 +686,15 @@ class L10n {
     'settings_search_hint': 'Ayarlarda ara…',
     'settings_search_no_results': 'Sonuç bulunamadı',
     'settings_group_general': 'Genel',
-    'settings_group_providers': 'Sağlayıcılar & Bağlantı',
+    'settings_group_providers': 'Modeller & Sağlayıcılar',
+    'settings_group_prompts': 'Promptlar & Kişilik',
     'settings_group_memory': 'Hafıza & Öğrenme',
     'settings_group_agents': 'Ajan & Otomasyon',
-    'settings_group_system': 'Sistem',
+    'settings_group_channels': 'Kanallar & İletişim',
+    'settings_group_system': 'Sistem & Veri',
     'settings_group_other': 'Diğer',
     'general': 'Genel',
-    'tab_providers': 'API Providers',
+    'tab_providers': 'API Sağlayıcıları',
     'tab_cli_connections': 'CLI Bağlantıları',
     'cli_connections_desc':
         'Claude Code gibi kodlama ajanlarının bilgisayarında kurulu olup olmadığını kontrol et. Bunlar gerçek ajanlar — dosya/komut çalıştırma yetkileri var.',
@@ -710,9 +712,9 @@ class L10n {
     'cli_command_src_skill': 'SKILL',
     'cli_command_src_builtin': 'YERLEŞİK',
     'tab_orchestra': 'Orchestra',
-    'tab_agent_permissions': 'Agent Permissions',
+    'tab_agent_permissions': 'Ajan İzinleri',
     'tab_taskloop': 'Görev Döngüsü',
-    'tab_gpu_config': 'Ekran Kartı Config',
+    'tab_gpu_config': 'Ekran Kartı (GPU)',
     'tab_stats': 'İstatistikler',
     'tab_dev_gateway': 'Geliştirici',
     'tab_swarm': 'Swarm',
@@ -918,7 +920,7 @@ class L10n {
     'dev_gateway_claude_cli_model_none': 'Model seçilmedi',
     'dev_gateway_claude_cli_model_disabled_hint':
         'Model seçmeden önce yukarıdan bağlan.',
-    'tab_web_chat': 'Web sohbet',
+    'tab_web_chat': 'Web Sohbet',
     'tab_privacy': 'Gizlilik',
     'privacy_share_usage_title': 'Kullanım istatistiklerini paylaş',
     'privacy_share_usage_desc': 'Memo’yu geliştirmemize yardımcı olmak için kullanım ve hata istatistiklerini paylaş.',
@@ -1889,17 +1891,17 @@ class L10n {
     'whatsapp_mode_on': 'WhatsApp Sohbeti — Devre Dışı Bırak',
     'whatsapp_mode_off': 'WhatsApp Sohbeti — Etkinleştir',
     'about_vision': 'Vizyon ve Misyon',
-    'about_license': 'Açık Kaynak (MIT Lisansı)',
+    'about_license': 'Açık Kaynak (AGPL-3.0 Lisansı)',
     'about_license_text':
-        'Bu yazılım MIT lisansı ile açık kaynak olarak sunulmaktadır. Geliştirici: Buğra Akdemir',
+        'Bu yazılım GNU Affero Genel Kamu Lisansı v3 (AGPL-3.0) ile açık kaynak olarak sunulmaktadır. Geliştirici: Buğra Akdemir',
     'about_vision_body':
-        'Memo, tamamen yerel bilgisayarınızda çalışan, gizlilik odaklı bir yapay zeka asistanıdır. Konuşmalarınızı ve tercihlerinizi zamanla öğrenip kalıcı hafızasına kazır. Üçüncü taraf sunuculara ihtiyaç duymadan, kendi bilgisayarınızda çalışır — verileriniz tamamen sizde kalır. İsteğe bağlı olarak harici API sağlayıcıları veya yerel llama.cpp modelleri ile kullanılabilir. WhatsApp entegrasyonu, RAG hafıza ve E2E şifreli bulut senkronizasyonu destekler.',
+        'Memo, tamamen yerel bilgisayarınızda çalışan, gizlilik odaklı ve yerel-öncelikli bir yapay zeka asistanıdır. Hibrit RAG hafızası (vektör + tam metin arama), proje bazlı bellek izolasyonu ve Dream bellek pekiştirme sistemiyle konuşmalarınızı ve çalışma düzeninizi zamanla öğrenir — verileriniz kendi cihazınızda kalır. Yerel llama.cpp modellerinin yanı sıra isteğe bağlı harici API sağlayıcıları, abonelik bağlantıları ve Orchestra çoklu model moduyla çalışır. Ajan araçları, Görev Döngüsü, Beceriler, Sesli Mod (whisper.cpp), WhatsApp/Telegram/E-posta entegrasyonları, Dijital İkiz sabah brifingi, takvim, uzaktan erişim ve uçtan uca şifreli bulut yedekleme destekler.',
     'about_license_title': 'Lisans',
     'about_license_body':
         'Bu yazılım GNU Affero Genel Kamu Lisansı v3 (AGPL-3.0) ile lisanslanmıştır. Geliştirici: Buğra Akdemir. Kaynak kod: github.com/BugraAkdemir/memo',
     'about_tech_title': 'Teknolojiler',
     'about_tech_body':
-        'Go 1.25 + Flutter 3.10 | SQLite + sqlite-vec (vektör arama) | whatsmeow (WhatsApp Web) | llama.cpp | Riverpod | Dio',
+        'Go 1.26 + Flutter | SQLite + sqlite-vec + FTS5 (hibrit bellek) | llama.cpp & whisper.cpp | whatsmeow (WhatsApp) & Telegram Bot API | Tailscale (tsnet) | Riverpod | Dio',
 
     // Settings — GPU / Llama
     'gpu_section_title': 'Ekran Kartı (GPU) / Llama Motoru',
@@ -3851,10 +3853,12 @@ class L10n {
     'settings_search_hint': 'Search settings…',
     'settings_search_no_results': 'No matching settings',
     'settings_group_general': 'General',
-    'settings_group_providers': 'Providers & Connectivity',
+    'settings_group_providers': 'Models & Providers',
+    'settings_group_prompts': 'Prompts & Personality',
     'settings_group_memory': 'Memory & Learning',
     'settings_group_agents': 'Agents & Automation',
-    'settings_group_system': 'System',
+    'settings_group_channels': 'Channels & Messaging',
+    'settings_group_system': 'System & Data',
     'settings_group_other': 'Other',
     'general': 'General',
     'tab_providers': 'API Providers',
@@ -4083,7 +4087,7 @@ class L10n {
     'dev_gateway_claude_cli_model_none': 'No model selected',
     'dev_gateway_claude_cli_model_disabled_hint':
         'Connect above before picking a model.',
-    'tab_web_chat': 'Web chat',
+    'tab_web_chat': 'Web Chat',
     'tab_privacy': 'Privacy',
     'privacy_share_usage_title': 'Share usage statistics',
     'privacy_share_usage_desc': 'Share usage and error statistics to help us improve Memo.',
@@ -5044,17 +5048,17 @@ class L10n {
     'whatsapp_mode_on': 'WhatsApp Chat — Turn Off',
     'whatsapp_mode_off': 'WhatsApp Chat — Turn On',
     'about_vision': 'Vision and Mission',
-    'about_license': 'Open Source (MIT License)',
+    'about_license': 'Open Source (AGPL-3.0 License)',
     'about_license_text':
-        'This software is open source under the MIT License. Developer: Bu\u011Fra Akdemir',
+        'This software is open source under the GNU Affero General Public License v3 (AGPL-3.0). Developer: Bu\u011Fra Akdemir',
     'about_vision_body':
-        "Memo is a privacy-focused AI assistant that runs entirely on your own computer. It learns your conversations and preferences over time, storing them in a persistent memory. It runs on your machine with no need for third-party servers \u2014 your data stays entirely yours. It can optionally be used with external API providers or local llama.cpp models. Supports WhatsApp integration, RAG memory, and E2E-encrypted cloud sync.",
+        "Memo is a local-first, privacy-focused AI assistant that runs on your own machine. With hybrid RAG memory (vector + full-text search), project-scoped memory isolation, and Dream memory consolidation, it learns your conversations and workflow over time \u2014 while keeping your data on your device. Alongside local llama.cpp models, it optionally supports external API providers, Subscriptions, and Orchestra multi-model mode. Includes agent tools, Self-Driving task loop, Skills, Live Mode (whisper.cpp), WhatsApp/Telegram/Mail integrations, Digital Twin morning briefings, calendar, remote access, and end-to-end encrypted cloud backup.",
     'about_license_title': 'License',
     'about_license_body':
         'This software is licensed under the GNU Affero General Public License v3 (AGPL-3.0). Developer: Bu\u011Fra Akdemir. Source code: github.com/BugraAkdemir/memo',
     'about_tech_title': 'Technologies',
     'about_tech_body':
-        'Go 1.25 + Flutter 3.10 | SQLite + sqlite-vec (vector search) | whatsmeow (WhatsApp Web) | llama.cpp | Riverpod | Dio',
+        'Go 1.26 + Flutter | SQLite + sqlite-vec + FTS5 (hybrid memory) | llama.cpp & whisper.cpp | whatsmeow (WhatsApp) & Telegram Bot API | Tailscale (tsnet) | Riverpod | Dio',
 
     'gpu_section_title': 'GPU / Llama Engine',
     'gpu_section_desc':

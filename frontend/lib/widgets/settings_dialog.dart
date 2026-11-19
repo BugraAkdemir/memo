@@ -118,12 +118,14 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   /// Every index 0..29 must appear exactly once — covered by
   /// settings_dialog_test.dart's group-coverage test.
   static const _groups = [
-    ('settings_group_general', [0, 1, 2, 28]),
-    ('settings_group_providers', [5, 6, 25, 27, 15, 22, 23, 24, 29]),
-    ('settings_group_memory', [3, 4, 9, 10, 21]),
-    ('settings_group_agents', [7, 8, 11, 18, 26]),
-    ('settings_group_system', [12, 13, 14, 20]),
-    ('settings_group_other', [16, 17, 19]),
+    ('settings_group_general', [0, 24, 28]),
+    ('settings_group_providers', [5, 25, 6, 27]),
+    ('settings_group_prompts', [1, 2, 26, 10]),
+    ('settings_group_memory', [3, 21, 9, 4]),
+    ('settings_group_agents', [8, 11, 18, 7]),
+    ('settings_group_channels', [22, 23, 29]),
+    ('settings_group_system', [12, 14, 15, 20, 13]),
+    ('settings_group_other', [16, 19, 17]),
   ];
 
   List<String> get _tabs => [

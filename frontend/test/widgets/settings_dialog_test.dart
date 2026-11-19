@@ -326,4 +326,60 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('rail exposes prompts and channels groups and opens updated About tab',
+      (tester) async {
+    await _pumpSettingsDialog(tester);
+
+    expect(
+      find.descendant(
+        of: _railList,
+        matching: find.text(L10n.t('settings_group_general')),
+      ),
+      findsWidgets,
+    );
+
+    for (final key in [
+      'settings_group_providers',
+      'settings_group_prompts',
+      'settings_group_memory',
+      'settings_group_agents',
+      'settings_group_channels',
+      'settings_group_system',
+      'settings_group_other',
+    ]) {
+      final header = find.descendant(of: _railList, matching: find.text(L10n.t(key)));
+      await tester.scrollUntilVisible(
+        header,
+        150,
+        scrollable: _railScrollable,
+      );
+      expect(header, findsOneWidget);
+    }
+
+    final aboutRow = find.descendant(of: _railList, matching: find.text(L10n.t('about')));
+    await tester.scrollUntilVisible(
+      aboutRow,
+      150,
+      scrollable: _railScrollable,
+    );
+    await tester.tap(aboutRow);
+    await tester.pump();
+
+    expect(find.text(L10n.t('about_vision_body')), findsOneWidget);
+    final aboutScrollable = find.descendant(
+      of: find.byType(ListView).last,
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(
+      find.text(L10n.t('about_tech_body')),
+      150,
+      scrollable: aboutScrollable,
+    );
+    expect(find.text(L10n.t('about_tech_body')), findsOneWidget);
+    expect(L10n.t('about_tech_body'), contains('Go 1.26'));
+    expect(L10n.t('about_tech_body'), contains('FTS5'));
+    expect(L10n.t('about_license'), contains('AGPL-3.0'));
+    expect(tester.takeException(), isNull);
+  });
+
 }

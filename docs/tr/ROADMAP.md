@@ -73,8 +73,17 @@ bug/tasarım eksiklerini görmek için repo'nun `BUG_REPORT.md`'sine bakın.
   gördüğü GPU'ya göre motor seçimi, Vulkan istem işleme, n-gram spekülatif
   çözümleme) ve **anonim günlük özet** (resmî derlemelerde varsayılan olarak
   açık). Sürüm notları: [`versinNote/tr/v5.0.0.md`](../../versinNote/tr/v5.0.0.md).
+- **v5.1.0 (20 Kasım 2026)** — **Hibrit isteğe bağlı araç yükleme** (~%90 daha
+  küçük başlangıç araç şeması) ve **küçük model kompakt profili**, platformlar
+  arası **masaüstü oturum sahipliği** ve yerel Windows sistem tepsisi
+  kurtarması, çevrimdışı gömülü fontlar ve tembel sekmeler, otomatik
+  **`mmproj`** görsel projektör indirme ve **GPU→CPU geçişi**, **araç destekli
+  kapsamlı Sabah Brifingi**, küresel skill kurulumu (`~/MemoWorkspace`), 8
+  gruplu Ayarlar menüsü, **Go 1.26.11**, **`llama.cpp b12359` (v1.0.0 stable)**,
+  **`CLIProxyAPI v8.0.79`** ve **`gosearch/browser v0.4.0`** (`WithMarkdown`).
+  Sürüm notları: [`versinNote/tr/v5.1.0.md`](../../versinNote/tr/v5.1.0.md).
 
-## v5.0 sonrası açık — yapıldı ama henüz kanıtlanmadı
+## v5.1 sonrası açık — yapıldı ama henüz kanıtlanmadı
 
 Dilekten değil, planların kendi "doğrulanmadı" listelerinden yazıldı:
 

@@ -48,7 +48,7 @@
 </div>
 
 > [!NOTE]
-> **v5.1.0 yayında** (17 Kasım 2026). [Sürüm notlarını](versinNote/tr/v5.1.0.md) oku ya da [yeniliklere](#yenilikler) geç.
+> **v5.1.0 yayında** (20 Kasım 2026). [Sürüm notlarını](versinNote/tr/v5.1.0.md) oku ya da [yeniliklere](#yenilikler) geç.
 
 ---
 
@@ -99,51 +99,28 @@ Tamamen **senin** makinende çalışır. Haftalar önceki konuşmaları hatırla
 ---
 
 <a id="yenilikler"></a>
-## v5.0'da neler yeni
+## v5.1'de neler yeni
 
 <table>
 <tr>
 <td width="33%" valign="top">
 
-**✉️ Mail ve Dijital İkiz**<br/>
-Gmail, Outlook ya da herhangi bir IMAP hesabı. Injection kalkanı, sır taraması, senin üslubunla yanıtlar, onay ve geri alma süresi.<br/>
-<sub><a href="docs/DIGITAL_TWIN_AND_MAIL.md">Doküman →</a></sub>
+**🧰 Hibrit isteğe bağlı araçlar**<br/>
+Temel günlük araçlar sabit kalırken uzman gruplar <code>load_tools</code> ile açılır (~%90 daha az başlangıç şeması); 4k–8k yerel modeller için kompakt profil.<br/>
+<sub><a href="versinNote/tr/v5.1.0.md">Notlar →</a></sub>
 
 </td>
 <td width="33%" valign="top">
 
-**🌅 Günlük brifing**<br/>
-Sabahın tek kartta; uygulamaya, Telegram'a, WhatsApp'a ya da maile gelir. Saati, içeriği ve modeli sen seçersin.<br/>
-<sub><a href="docs/DIGITAL_TWIN_AND_MAIL.md">Doküman →</a></sub>
+**🖥️ Hızlı masaüstü ve sistem tepsisi**<br/>
+Windows/macOS/Linux'ta temiz süreç sahipliği, Explorer kurtarmalı yerel Windows tepsisi, çevrimdışı gömülü fontlar ve tembel sekme yükleme.<br/>
+<sub><a href="versinNote/tr/v5.1.0.md">Notlar →</a></sub>
 
 </td>
 <td width="33%" valign="top">
 
-**🧭 Yeni kurulum sihirbazı**<br/>
-Model, hafıza, mail, kanallar, brifing ve gizlilik tek bir rehberli akışta; kaldığın yerden devam eder.<br/>
-<sub><a href="docs/SETUP_WIZARD.md">Doküman →</a></sub>
-
-</td>
-</tr>
-<tr>
-<td valign="top">
-
-**📁 Projeler**<br/>
-Bir klasör aç; kendi kurallarını ve kendi hafızasını alır, kişisel hafızan ona asla ulaşmaz.<br/>
-<sub><a href="docs/tr/PROJECT_FOLDER.md">Doküman →</a></sub>
-
-</td>
-<td valign="top">
-
-**🧩 Alt ajanlar ve skill'ler**<br/>
-İşi arka plandaki alt ajanlara devret; mesajında <code>/skill</code> ile bir skill'i adıyla çağır.<br/>
-<sub><a href="docs/CHAT_SUBAGENTS.md">Doküman →</a></sub>
-
-</td>
-<td valign="top">
-
-**⚡ Daha hızlı yerel modeller**<br/>
-Memo'nun gerçekten gördüğü GPU'ya göre motor seçimi, Vulkan istem işleme, n-gram spekülatif çözümleme (Linux).<br/>
+**⚡ Daha akıllı yerel modeller**<br/>
+Görsel GGUF'lar için otomatik <code>mmproj</code> indirme, GPU hatasında CPU'ya geçiş, llama.cpp <code>b12359</code> (v1.0.0 stable), Effort seçimi ve doğru <code>t/s</code>.<br/>
 <sub><a href="versinNote/tr/v5.1.0.md">Notlar →</a></sub>
 
 </td>
@@ -151,20 +128,45 @@ Memo'nun gerçekten gördüğü GPU'ya göre motor seçimi, Vulkan istem işleme
 <tr>
 <td valign="top">
 
-**👀 Canlı ajan**<br/>
-Ajan çalışırken metin, düşünce ve araç çağrıları sırayla akar; uzun turlar görevi unutmaz.
+**🌅 Araç destekli sabah brifingi**<br/>
+Özel brifing maddeleri salt-okunur/web araçlarını çalıştırıp kapsamlı raporlar üretebilir; uygulama, Telegram, WhatsApp veya maile gelir.<br/>
+<sub><a href="docs/DIGITAL_TWIN_AND_MAIL.md">Doküman →</a></sub>
 
 </td>
 <td valign="top">
 
-**🗂 Tek sohbet listesi**<br/>
-Ajan sekmesi kalktı: tek liste, Sohbet | Ajan başlangıç ekranı, ajan sohbetleri robot simgesiyle işaretli.
+**✉️ Mail ve Dijital İkiz**<br/>
+Gmail, Outlook ya da herhangi bir IMAP hesabı. Injection kalkanı, sır taraması, senin üslubunla yanıtlar, onay ve geri alma süresi.<br/>
+<sub><a href="docs/DIGITAL_TWIN_AND_MAIL.md">Doküman →</a></sub>
+
+</td>
+<td valign="top">
+
+**📁 Projeler ve küresel skill'ler**<br/>
+Klasörler kendi kurallarına ve hafızasına sahip; herhangi bir sohbetten, Telegram veya WhatsApp'tan GitHub/<code>npx skills add</code> ile skill kur.<br/>
+<sub><a href="docs/tr/PROJECT_FOLDER.md">Doküman →</a></sub>
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+**🧩 Alt ajanlar ve canlı ajan**<br/>
+İşi arka plandaki alt ajanlara devret; metin, düşünce ve araç çağrıları sırayla akar, uzun turlar görevi unutmaz.<br/>
+<sub><a href="docs/CHAT_SUBAGENTS.md">Doküman →</a></sub>
+
+</td>
+<td valign="top">
+
+**🧭 Kurulum sihirbazı ve Ayarlar**<br/>
+Kaldığı yerden süren sihirbaz, 8 gruplu Ayarlar menüsü, sadeleşen sohbet çubukları, abonelik hak takibi ve gelişmiş tarayıcı yedeği.<br/>
+<sub><a href="docs/SETUP_WIZARD.md">Doküman →</a></sub>
 
 </td>
 <td valign="top">
 
 **🔄 Kendini günceller**<br/>
-Uygulamanın içinden imzalı güncelleme; yeni sürüm açılmazsa otomatik geri alma.<br/>
+Uygulamanın içinden imzalı güncelleme ve otomatik geri alma; llama.cpp, whisper.cpp ve CLIProxyAPI bağımsız yenilenir.<br/>
 <sub><a href="docs/tr/AUTO_UPDATE.md">Doküman →</a></sub>
 
 </td>

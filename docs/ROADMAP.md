@@ -71,8 +71,17 @@ live testing.
   processing, n-gram speculative decoding) and the **anonymous daily
   summary** (on by default in official builds). Release notes:
   [`versinNote/v5.0.0.md`](../versinNote/v5.0.0.md).
+- **v5.1.0 (2026-11-20)** — **Hybrid on-demand tool loading** (~90% smaller
+  starting tool schema) and **small-model compact profile**, cross-platform
+  **desktop session ownership** and native Windows tray recovery, offline
+  bundled fonts and lazy tabs, automatic **`mmproj`** vision-projector
+  downloads and **GPU-to-CPU fallback**, **tool-powered full-length Morning
+  Briefing**, global skill installation (`~/MemoWorkspace`), 8-group Settings
+  reorganization, **Go 1.26.11**, **`llama.cpp b12359` (v1.0.0 stable)**,
+  **`CLIProxyAPI v8.0.79`**, and **`gosearch/browser v0.4.0`** (`WithMarkdown`).
+  Release notes: [`versinNote/v5.1.0.md`](../versinNote/v5.1.0.md).
 
-## Open after v5.0 — what is built but not yet proven
+## Open after v5.1 — what is built but not yet proven
 
 Written from the plans' own "not verified" lists, not from wishes:
 

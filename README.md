@@ -28,7 +28,7 @@
 <br/><br/>
 
 <b>
-<a href="#whats-new-in-v50">What's new</a> &nbsp;·&nbsp;
+<a href="#whats-new-in-v51">What's new</a> &nbsp;·&nbsp;
 <a href="#features">Features</a> &nbsp;·&nbsp;
 <a href="#digital-twin--mail">Digital Twin</a> &nbsp;·&nbsp;
 <a href="#privacy-and-security">Privacy</a> &nbsp;·&nbsp;
@@ -48,7 +48,7 @@
 </div>
 
 > [!NOTE]
-> **v5.1.0 is out** (November 17, 2026). Read the [release notes](versinNote/v5.1.0.md) or jump to [what's new](#whats-new-in-v50).
+> **v5.1.0 is out** (November 20, 2026). Read the [release notes](versinNote/v5.1.0.md) or jump to [what's new](#whats-new-in-v51).
 
 ---
 
@@ -98,51 +98,28 @@ It runs entirely on **your** machine. It remembers conversations from weeks ago.
 
 ---
 
-## What's new in v5.0
+## What's new in v5.1
 
 <table>
 <tr>
 <td width="33%" valign="top">
 
-**✉️ Mail & Digital Twin**<br/>
-Gmail, Outlook or any IMAP account. Injection shield, secret scan, replies in your style, approval and undo window.<br/>
-<sub><a href="docs/DIGITAL_TWIN_AND_MAIL.md">Docs →</a></sub>
+**🧰 Hybrid on-demand tools**<br/>
+Core everyday tools stay pinned while specialized groups load via <code>load_tools</code> (~90% less starting schema), plus a compact profile for 4k–8k local models.<br/>
+<sub><a href="versinNote/v5.1.0.md">Notes →</a></sub>
 
 </td>
 <td width="33%" valign="top">
 
-**🌅 Daily briefing**<br/>
-Your morning in one card, sent to the app, Telegram, WhatsApp or mail. You pick the time, content and model.<br/>
-<sub><a href="docs/DIGITAL_TWIN_AND_MAIL.md">Docs →</a></sub>
+**🖥️ Faster desktop & native tray**<br/>
+Owned process supervision across Windows/macOS/Linux, native Windows system tray with Explorer recovery, offline bundled fonts and lazy tabs.<br/>
+<sub><a href="versinNote/v5.1.0.md">Notes →</a></sub>
 
 </td>
 <td width="33%" valign="top">
 
-**🧭 New setup wizard**<br/>
-Model, memory, mail, channels, briefing and privacy in one guided flow that resumes where you left off.<br/>
-<sub><a href="docs/SETUP_WIZARD.md">Docs →</a></sub>
-
-</td>
-</tr>
-<tr>
-<td valign="top">
-
-**📁 Projects**<br/>
-Open a folder and it gets its own rules and its own memory; your personal memory never reaches it.<br/>
-<sub><a href="docs/PROJECT_FOLDER.md">Docs →</a></sub>
-
-</td>
-<td valign="top">
-
-**🧩 Sub-agents & skills**<br/>
-Hand work to background sub-agents; call a skill by name with <code>/skill</code> in your message.<br/>
-<sub><a href="docs/CHAT_SUBAGENTS.md">Docs →</a></sub>
-
-</td>
-<td valign="top">
-
-**⚡ Faster local models**<br/>
-Engine chosen by the GPU Memo really sees, Vulkan prompt processing, n-gram speculative decoding (Linux).<br/>
+**⚡ Smarter local models**<br/>
+Automatic <code>mmproj</code> downloads for vision GGUFs, GPU-to-CPU fallback on load failure, llama.cpp <code>b12359</code> (v1.0.0 stable), Effort control and accurate <code>t/s</code>.<br/>
 <sub><a href="versinNote/v5.1.0.md">Notes →</a></sub>
 
 </td>
@@ -150,20 +127,45 @@ Engine chosen by the GPU Memo really sees, Vulkan prompt processing, n-gram spec
 <tr>
 <td valign="top">
 
-**👀 Live agent**<br/>
-Text, thinking and tool calls stream in order while the agent works, and long turns keep the task.
+**🌅 Tool-powered briefing**<br/>
+Morning Briefing custom items can now run safe read-only/web tools and produce full-length reports, delivered to the app, Telegram, WhatsApp or mail.<br/>
+<sub><a href="docs/DIGITAL_TWIN_AND_MAIL.md">Docs →</a></sub>
 
 </td>
 <td valign="top">
 
-**🗂 One chat list**<br/>
-The Agent tab is gone: one list, a Chat | Agent start screen, agent chats marked with a robot.
+**✉️ Mail & Digital Twin**<br/>
+Gmail, Outlook or any IMAP account. Injection shield, secret scan, replies in your style, approval and undo window.<br/>
+<sub><a href="docs/DIGITAL_TWIN_AND_MAIL.md">Docs →</a></sub>
+
+</td>
+<td valign="top">
+
+**📁 Projects & global skills**<br/>
+Folders get their own rules and memory; install skills globally via GitHub or <code>npx skills add</code> from any chat, Telegram or WhatsApp.<br/>
+<sub><a href="docs/PROJECT_FOLDER.md">Docs →</a></sub>
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+**🧩 Sub-agents & live agent**<br/>
+Hand work to background sub-agents; text, thinking and tool calls stream in order while long turns keep the task.<br/>
+<sub><a href="docs/CHAT_SUBAGENTS.md">Docs →</a></sub>
+
+</td>
+<td valign="top">
+
+**🧭 Setup wizard & Settings**<br/>
+Resumable setup wizard, 8-group Settings sidebar, decluttered chat bars, subscription allowance tracking, and upgraded browser fallback.<br/>
+<sub><a href="docs/SETUP_WIZARD.md">Docs →</a></sub>
 
 </td>
 <td valign="top">
 
 **🔄 Updates itself**<br/>
-Signed updates from inside the app, with automatic rollback if the new version doesn't start.<br/>
+Signed updates from inside the app with automatic rollback, plus independent engine updates (llama.cpp, whisper.cpp, CLIProxyAPI).<br/>
 <sub><a href="docs/AUTO_UPDATE.md">Docs →</a></sub>
 
 </td>

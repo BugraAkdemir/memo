@@ -143,13 +143,14 @@ See [`PROJECT_MAP.md`](PROJECT_MAP.md) for a file-by-file breakdown. Package-lev
 
 ## 5. Core Features
 
-See [`FEATURES.md`](FEATURES.md) for the full catalog. Headlines for v5.0.0:
+See [`FEATURES.md`](FEATURES.md) for the full catalog. Headlines for v5.1.0:
 
+- **Hybrid On-Demand Tools & Small-Model Compact Profile** — core everyday tools stay pinned while specialized tool groups load via `load_tools` (~90% smaller starting schema); unconnected integrations are pruned automatically; 4k–8k local models get a compact prompt profile and `/props` context detection.
+- **Desktop Lifecycle, Native Tray & Fast Startup** — owned session supervision (`--desktop-session` / `--owned`) across Windows, macOS and Linux, native Windows tray with Explorer recovery, offline bundled fonts (`Inter`/`SchibstedGrotesk`), and lazy-mounted `AppShell` tabs.
+- **Smarter Local Models & Upgraded Engines** — automatic `mmproj` download for vision GGUFs, automatic GPU-to-CPU fallback (`--device none`), hardware-fit recommendations on Discover, Effort selector for local/custom models, accurate `t/s`, plus bundled `llama.cpp b12359` (v1.0.0 stable), `CLIProxyAPI v8.0.79`, and `gosearch/browser v0.4.0` (Markdown extraction & crash recovery).
+- **Tool-Powered Morning Briefing & Global Skills** — custom briefing items can run safe read-only/web tools and write full-length reports (up to 16,000 chars); skills install globally from GitHub or `npx skills add` in any chat, Telegram or WhatsApp; Agent Mode defaults on with `~/MemoWorkspace`.
 - **Mail & Digital Twin** — Gmail, Outlook or any IMAP account; a 3-layer Gatekeeper, an injection shield and an outgoing secret scan; one timeline per person across mail and WhatsApp; replies in your own style; approval from the app, WhatsApp or Telegram with an undo window. **Off by default.**
-- **Daily briefing** — a morning card (and a note before meetings) you shape: time, sections, up to five custom items, channels (app, Telegram, WhatsApp, mail) and an optional briefing model.
-- **Setup wizard v2** — model, memory, mail, channels, briefing and privacy in one resumable flow.
-- **Projects** — `.memo/` folders with their own rules and their own memory; one chat list with a Chat | Agent start screen; a live agent; sub-agents; skills by name.
-- **In-app updates and the anonymous daily summary** — signed updates with rollback; a content-free usage summary that is **on by default in official builds** and one switch away from off.
+- **Setup wizard v2, Projects & In-app Updates** — resumable setup flow, `.memo/` project folders with isolated memory, 8-group Settings sidebar, signed updates with rollback, and the anonymous daily summary (**on by default in official builds**, one switch to turn off).
 
 Still current from earlier versions:
 
@@ -358,7 +359,7 @@ As of this writing, open items worth tracking live in `docs/ROADMAP.md`'s "Near-
 | Subscriptions | `docs/SUBSCRIPTION_CAPABILITIES.md` | How model capabilities of a subscription are read |
 | Troubleshooting | `docs/TROUBLESHOOTING.md` | Common issues & fixes |
 | Contributing | `docs/CONTRIBUTING.md` | Contribution guidelines |
-| Release Notes | `versinNote/` | Per-version changelog (`v5.0.0.md` is the latest release) |
+| Release Notes | `versinNote/` | Per-version changelog (`v5.1.0.md` is the latest release) |
 | CGO Flags | `docs/CGO_FLAGS.md` | Build configuration |
 | Turkish docs | `docs/tr/` | Turkish mirrors of the above |
 | Obsidian wiki (EN) | `obsidian-doc-en/Memo/` | Full browsable documentation set |
@@ -367,4 +368,4 @@ As of this writing, open items worth tracking live in `docs/ROADMAP.md`'s "Near-
 
 ---
 
-*Last updated: 2026-11-07 · Version: v5.0.0*
+*Last updated: 2026-11-20 · Version: v5.1.0*

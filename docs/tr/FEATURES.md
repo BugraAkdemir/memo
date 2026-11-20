@@ -405,6 +405,11 @@ Eskiden Ayarlar'a gitmeyi gerektiren her şey için rehberli bir akış: dil ve 
 ## 16. 📊 Anonim Günlük Özet (v5.0)
 Resmî derlemeler küçük, anonim bir kullanım özetini **varsayılan olarak** gönderir (böyle bir özelliği olmayan sürümden güncellerken de); tek bir anahtar kapatır (kurulum sihirbazı ya da Ayarlar → Gizlilik), kaynak derlemeler sen açmadıkça hiçbir şey göndermez ve `memo telemetry preview` önce tam raporu gösterir. Mesaj, hafıza, kişi, dosya, yol, anahtar ya da ad asla taşımaz. Kimliksiz ayrı bir kurulum sayımı veri klasörü başına bir kez gönderilir. Bkz. [`TELEMETRY.md`](../TELEMETRY.md).
 
+## 17. ⚡ Bağlam Verimliliği, Masaüstü Süreç Sahipliği ve Motor Güncellemeleri (v5.1)
+- **Hibrit isteğe bağlı araç yükleme ve kompakt profil.** Temel günlük araçları ilk turdan sabit tutarken uzman grupları `load_tools` arkasına alır (~%90 daha küçük başlangıç şeması), bağlı olmayan kanal araçlarını otomatik eler ve `<10k` yerel modelleri `/props` bağlam algılamalı kompakt profilde çalıştırır (**Ayarlar → Genel**).
+- **Masaüstü oturum sahipliği ve hızlı açılış.** Windows, macOS ve Linux'ta `--desktop-session` / `--owned` süreç gözetimi, Explorer kurtarmalı yerel Windows tepsisi, çevrimdışı gömülü `Inter`/`SchibstedGrotesk` yazı tipleri, tembel `AppShell` sekmeleri ve 8 gruplu Ayarlar yan menüsü.
+- **Görsel `mmproj`, GPU→CPU geçişi ve güncel motorlar.** Görsel GGUF'lar için otomatik `mmproj` indirme, GPU/Vulkan yükleme hatasında otomatik CPU (`--device none`) denemesi, yerel/özel modellerde Effort seçimi, doğru `t/s`, araç destekli kapsamlı Sabah Brifingi, küresel skill kurulumu (`~/MemoWorkspace`), gömülü `llama.cpp b12359` (v1.0.0 stable), `CLIProxyAPI v8.0.79` ve `gosearch/browser v0.4.0` (`WithMarkdown`).
+
 ---
 
 ## 🎨 Tasarım Felsefesi: "Greige" Minimalizm
@@ -413,7 +418,7 @@ Resmî derlemeler küçük, anonim bir kullanım özetini **varsayılan olarak**
 - **Onboarding Sihirbazı**: İsim, persona ve ilk tanılama için rehberli bir kurulum.
 
 ---
-*Son güncelleme: 2026-11-07 · Sürüm: v5.0.0*
+*Son güncelleme: 2026-11-20 · Sürüm: v5.1.0*
 
 **Buğra tarafından yapıldı.**
 *Yapay zekanı kontrol et. Hafızana sahip çık.*

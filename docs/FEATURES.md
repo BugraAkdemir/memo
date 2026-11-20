@@ -405,6 +405,11 @@ Signed manifests, byte-exact resumable downloads, an in-place swap with automati
 ## 16. 📊 Anonymous Daily Summary (v5.0)
 Official builds send a small anonymous usage summary **by default** (also when updating from a version without it); one switch turns it off (setup wizard or Settings → Privacy), source builds send nothing unless enabled, and `memo telemetry preview` shows the exact report first. It never carries messages, memory, contacts, files, paths, keys or names. A separate id-less install count is sent once per data folder. See [`TELEMETRY.md`](TELEMETRY.md).
 
+## 17. ⚡ Context Efficiency, Desktop Supervision & Engine Upgrades (v5.1)
+- **Hybrid on-demand tool loading & compact profile.** Keeps core tools pinned while deferring specialized tool groups behind `load_tools` (~90% smaller starting schema), prunes disconnected channel tools automatically, and runs `<10k` local models in a compact prompt profile with `/props` context detection. Toggleable in **Settings → General**.
+- **Desktop session ownership & faster startup.** `--desktop-session` / `--owned` process supervision across Windows, macOS and Linux, native Windows tray with Explorer recovery, offline bundled `Inter`/`SchibstedGrotesk` fonts, lazy-mounted `AppShell` tabs, and an 8-group Settings sidebar.
+- **Vision `mmproj`, GPU→CPU fallback & engine refresh.** Automatic `mmproj` download for vision GGUFs, automatic `--device none` CPU retry on GPU/Vulkan load failures, Effort selector for local/custom models, accurate `t/s`, tool-powered full-length Morning Briefing reports, global skill installation (`~/MemoWorkspace`), bundled `llama.cpp b12359` (v1.0.0 stable), `CLIProxyAPI v8.0.79`, and `gosearch/browser v0.4.0` (`WithMarkdown`).
+
 ---
 
 ## 🎨 Design Philosophy: "Greige" Minimalism
@@ -413,7 +418,7 @@ Official builds send a small anonymous usage summary **by default** (also when u
 - **Onboarding Wizard**: A guided setup for name, persona, and initial diagnostics.
 
 ---
-*Last updated: 2026-11-07 · Version: v5.0.0*
+*Last updated: 2026-11-20 · Version: v5.1.0*
 
 **Built by Buğra.**
 *Control your AI. Own your Memory.*

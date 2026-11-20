@@ -381,7 +381,7 @@ cd frontend && flutter run -d linux
 
 ## 📋 8. Current Status
 
-**Current version:** v5.0.0 (2026-11-07).
+**Current version:** v5.1.0 (2026-11-20).
 
 **Bug tracking:** [`BUG_REPORT.md`](../BUG_REPORT.md) (repo root) is the actively-maintained log. [docs/KNOWN_ISSUES.md](./KNOWN_ISSUES.md) and [docs/RESOLVED_ISSUES.md](./RESOLVED_ISSUES.md) are frozen historical snapshots from the v3.x line, kept for reference only.
 
@@ -398,6 +398,10 @@ cd frontend && flutter run -d linux
   - `internal/telemetry/` — the anonymous daily summary (on by default in official builds).
   - Local models: the engine folder is chosen by the GPU the engine really sees (`internal/llama/device_probe.go`), a Vulkan backend plugin for prompt processing and n-gram speculative decoding (`internal/llama/spec.go`).
   - The setup wizard v2 (`frontend/lib/widgets/setup_wizard_view.dart`, `frontend/lib/widgets/setup/`), whose progress is a pure function of real app state.
+- **v5.1.0 (2026-11-20)** — context-efficiency, desktop reliability, and engine refresh:
+  - Hybrid on-demand tool loading (`internal/agent/compact_tools.go`, `internal/app/compact_mode.go`) pinning core tools while deferring extended groups behind `load_tools` (~90% smaller starting schema), plus a compact profile for `<10k` local models and `/props` context detection for custom `llama.cpp` providers.
+  - Cross-platform desktop session supervision (`internal/procjob/session.go`, `--desktop-session`/`--owned`, Windows `BREAKAWAY_OK` Job Objects, Unix process groups), native Windows tray recovery, offline bundled fonts, lazy-mounted `AppShell` tabs, and a Linux GTK/GDK clipboard warning filter (`frontend/linux/runner/gtk_clipboard_log_filter.h`).
+  - Automatic `mmproj` projector download for vision GGUFs, GPU-to-CPU fallback (`--device none`), tool-powered full-length Morning Briefing (`runBriefingToolLoop`), global skill installation (`~/MemoWorkspace` separation), subscription entitlement filtering (`internal/cliproxy/entitlement.go`), `osbridge` + `KorteksOobeScreen`, Go `1.26.11`, `llama.cpp b12359` (v1.0.0 stable), `CLIProxyAPI v8.0.79`, and `gosearch/browser v0.4.0` (`WithMarkdown`).
 - Backend-wide panic recovery: `logx.Recover`/`logx.GoRecover` wrap essentially every background goroutine, so an unexpected error in one no longer takes the whole process down.
 - Remote access (LAN/ngrok/Tailscale) requires the access token on every request; Tailscale itself is out of Beta.
 
@@ -430,5 +434,5 @@ sequenceDiagram
 
 ---
 
-> **Last updated:** 2026-11-07
-> **Version:** v5.0.0
+> **Last updated:** 2026-11-20
+> **Version:** v5.1.0

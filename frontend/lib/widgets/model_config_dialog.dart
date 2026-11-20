@@ -266,12 +266,14 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
                 children: [
                   Icon(Icons.memory, size: 16, color: MemoTheme.accent),
                   SizedBox(width: 8),
-                  Text(
-                    L10n.t('embedding_model'),
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                      color: MemoTheme.of(context).textMain,
+                  Expanded(
+                    child: Text(
+                      L10n.t('embedding_model'),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: MemoTheme.of(context).textMain,
+                      ),
                     ),
                   ),
                 ],
@@ -286,13 +288,19 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
               ),
               SizedBox(height: 8),
               Container(
-                height: 40,
+                constraints: embeddingModels.isEmpty
+                    ? const BoxConstraints(minHeight: 40)
+                    : const BoxConstraints.tightFor(height: 40),
+                alignment: Alignment.centerLeft,
                 decoration: BoxDecoration(
                   color: MemoTheme.of(context).bgPanel,
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
                   border: Border.all(color: MemoTheme.of(context).borderSoft),
                 ),
-                padding: EdgeInsets.symmetric(horizontal: 12),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: embeddingModels.isEmpty ? 8 : 0,
+                ),
                 child: embeddingModels.isEmpty
                     ? Row(
                         children: [
@@ -302,11 +310,13 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
                             color: MemoTheme.warningOrange,
                           ),
                           SizedBox(width: 8),
-                          Text(
-                            L10n.t('no_embedding_model'),
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: MemoTheme.warningOrange,
+                          Expanded(
+                            child: Text(
+                              L10n.t('no_embedding_model'),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: MemoTheme.warningOrange,
+                              ),
                             ),
                           ),
                         ],
@@ -334,6 +344,8 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
                                   color: MemoTheme.of(context).textDim,
                                   fontSize: 12,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                             ...embeddingModels.map(
@@ -402,42 +414,47 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
               ),
 
             // Actions
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: _starting
-                      ? null
-                      : () => Navigator.of(context).pop(),
-                  child: Text(
-                    L10n.t('cancel'),
-                    style: TextStyle(color: MemoTheme.of(context).textDim),
+            SizedBox(
+              width: double.infinity,
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  TextButton(
+                    onPressed: _starting
+                        ? null
+                        : () => Navigator.of(context).pop(),
+                    child: Text(
+                      L10n.t('cancel'),
+                      style: TextStyle(color: MemoTheme.of(context).textDim),
+                    ),
                   ),
-                ),
-                SizedBox(width: 12),
-                ElevatedButton(
-                  onPressed: _starting ? null : _startModel,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: MemoTheme.accent,
-                    foregroundColor: MemoTheme.of(context).textInverse,
-                    padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  ),
-                  child: _starting
-                      ? SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: MemoTheme.of(context).textInverse,
+                  ElevatedButton(
+                    onPressed: _starting ? null : _startModel,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: MemoTheme.accent,
+                      foregroundColor: MemoTheme.of(context).textInverse,
+                      padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    ),
+                    child: _starting
+                        ? SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: MemoTheme.of(context).textInverse,
+                            ),
+                          )
+                        : Text(
+                            isEmbeddingModel
+                                ? L10n.t('start_embedding')
+                                : L10n.t('start_model'),
                           ),
-                        )
-                      : Text(
-                          isEmbeddingModel
-                              ? L10n.t('start_embedding')
-                              : L10n.t('start_model'),
-                        ),
-                ),
-              ],
+                  ),
+                ],
+              ),
             ),
           ],
           ),
@@ -478,15 +495,21 @@ class _ContextSizeSlider extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Text(label, style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
-            Spacer(),
-            Text(
-              L10n.t('ctx_size_of_max', {'cur': '$value', 'max': '$max'}),
-              style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim),
-            ),
-          ],
+        SizedBox(
+          width: double.infinity,
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 2,
+            children: [
+              Text(label, style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+              Text(
+                L10n.t('ctx_size_of_max', {'cur': '$value', 'max': '$max'}),
+                style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim),
+              ),
+            ],
+          ),
         ),
         Slider(
           value: value.toDouble().clamp(sliderMin.toDouble(), max.toDouble()),

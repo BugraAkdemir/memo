@@ -41,8 +41,10 @@ type engineHandle interface {
 // newEngine and installFn sit behind package vars for the same reason
 // internal/websearch keeps gosearchSearch/gosearchFetch as vars — tests
 // substitute fakes instead of touching the network or launching a browser.
+// WithMarkdown() aligns browser-rendered output with websearch.Fetch's
+// static gosearch.Fetch(..., gosearch.WithMarkdown()) path.
 var newEngine = func(ctx context.Context) (engineHandle, error) {
-	return browser.New(ctx)
+	return browser.New(ctx, browser.WithMarkdown())
 }
 var installFn = browser.Install
 

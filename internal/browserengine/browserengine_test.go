@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -319,5 +321,42 @@ func TestManager_StartInstall_AlreadyActiveIsANoOp(t *testing.T) {
 	waitForInstallDone(t, m)
 	if calls != 2 {
 		t.Errorf("installFn called %d times, want exactly 2 (one pre-check + one real download, second StartInstall call added nothing)", calls)
+	}
+}
+
+func TestManager_Real_FetchReturnsMarkdown(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	m := New(false)
+	if !m.IsInstalled(ctx) {
+		t.Skip("no chromium-family browser installed on host")
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = fmt.Fprint(w, `<!doctype html>
+<html><head><title>JS Markdown Test</title></head>
+<body>
+<main id="root"></main>
+<script>
+document.getElementById('root').innerHTML =
+  '<article><h1>Rendered Heading</h1>' +
+  '<p>Hello from JavaScript with a <a href="https://example.com/doc">reference link</a> and enough body text so readability keeps the main article block intact.</p>' +
+  '<ul><li>First bullet item</li><li>Second bullet item</li></ul></article>';
+</script>
+</body></html>`)
+	}))
+	defer srv.Close()
+
+	page, err := m.Fetch(ctx, srv.URL)
+	if err != nil {
+		t.Fatalf("Manager.Fetch(%q): %v", srv.URL, err)
+	}
+	if !strings.Contains(page.Content, "# Rendered Heading") {
+		t.Errorf("expected Markdown heading in browser.Fetch output, got:\n%s", page.Content)
+	}
+	if !strings.Contains(page.Content, "[reference link](https://example.com/doc)") {
+		t.Errorf("expected Markdown link in browser.Fetch output, got:\n%s", page.Content)
 	}
 }

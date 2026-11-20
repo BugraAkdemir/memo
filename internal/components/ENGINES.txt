@@ -30,11 +30,18 @@
 # inside the folder (whisper 1.9.5 static build unchanged); `--list-devices`
 # shows the Vulkan plugin. linux/nvidia stays on b9441.
 #
+# Evidence (2026-11-20): linux/cpu, linux/amd and linux/cpu-arm64 now hold
+# llama.cpp b12359 (= the stable v1.0.0 release; `llama-server --version` prints
+# "version: 1.0.0-dev (build 12359, commit b1b770d90)"). linux/cpu was checked
+# with the real gemma-4-E4B chat and nomic-embed-text embedding models plus a
+# real whisper-server 1.9.5 transcription from inside the folder; `--list-devices`
+# shows `Vulkan0: AMD Radeon Graphics (RADV RENOIR)`. linux/nvidia stays on b9441.
+#
 # NOT listed on purpose: windows/* (ggml 0.13.1 like Linux b9441, but the llama
 # build was not proven) and darwin/* (ggml 0.15.3: a different, newer build whose
 # tag is not recorded anywhere). Add them when someone has confirmed the tag.
 #
 # component  version  folders...
-llama   b12110 linux/amd linux/cpu linux/cpu-arm64
+llama   b12359 linux/amd linux/cpu linux/cpu-arm64
 llama   b9441  linux/nvidia
 whisper 1.9.5  linux/cpu
